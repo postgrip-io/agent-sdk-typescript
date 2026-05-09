@@ -39,6 +39,7 @@ export interface ContinueAsNewResult {
 
 export interface Task<P = unknown, R = unknown> {
   id: string;
+  tenantId?: string;
   namespace: string;
   queue: string;
   type: string;
@@ -57,6 +58,7 @@ export interface Task<P = unknown, R = unknown> {
 
 export interface TaskEvent {
   id: string;
+  tenantId?: string;
   task_id: string;
   agent_id?: string;
   kind: TaskEventKind;
@@ -78,11 +80,23 @@ export interface TaskEventInput {
 }
 
 export interface EnqueueTaskRequest<P = unknown> {
+  tenantId?: string;
   namespace?: string;
   queue?: string;
   type: string;
   payload?: P;
   lease_timeout_seconds?: number;
+}
+
+export interface ActivityTaskPayload<Args extends unknown[] = unknown[]> {
+  activityType: string;
+  args?: Args;
+  workflowId?: string;
+  workflowRunId?: string;
+  workflowTaskId?: string;
+  attempt?: number;
+  cancellationType?: CancellationType;
+  retry?: RetryPolicy;
 }
 
 export type ScheduleState = 'active' | 'paused' | 'deleted';
@@ -123,6 +137,7 @@ export interface ScheduleAction<Args extends unknown[] = unknown[]> {
 
 export interface Schedule<Args extends unknown[] = unknown[]> {
   id: string;
+  tenantId?: string;
   namespace: string;
   state: ScheduleState;
   overlap_policy?: ScheduleOverlapPolicy;
@@ -293,6 +308,7 @@ export interface WorkflowExecutionDescription<R = unknown> {
 
 export interface WorkflowExecution<R = unknown> {
   id: string;
+  tenantId?: string;
   run_id: string;
   namespace: string;
   type: string;
@@ -313,6 +329,7 @@ export interface WorkflowExecution<R = unknown> {
 export interface WorkflowHistoryEvent {
   id: string;
   workflow_id: string;
+  tenantId?: string;
   task_id?: string;
   type: string;
   attributes?: Record<string, unknown>;
