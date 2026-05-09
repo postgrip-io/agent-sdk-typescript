@@ -1,6 +1,14 @@
 # PostGrip Agent TypeScript SDK
 
+[![Docs](https://img.shields.io/badge/docs-site-2563EB?logo=readthedocs&logoColor=white)](https://postgrip-io.github.io/agent-sdk-typescript/)
+[![npm](https://img.shields.io/npm/v/%40postgrip%2Fagent.svg)](https://www.npmjs.com/package/@postgrip/agent)
+[![types](https://img.shields.io/npm/types/%40postgrip%2Fagent.svg)](https://www.npmjs.com/package/@postgrip/agent)
+[![CI](https://github.com/postgrip-io/agent-sdk-typescript/actions/workflows/ci.yml/badge.svg)](https://github.com/postgrip-io/agent-sdk-typescript/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/postgrip-io/agent-sdk-typescript.svg)](LICENSE)
+
 This package provides a Temporal-style TypeScript API for the standalone PostGrip Agent runtime service. Source for `agent-sdk-go` and `agent-sdk-python` lives in sibling repos under [`github.com/postgrip-io`](https://github.com/postgrip-io); the wire-format types are tracked in [`agent-sdk-protocol`](https://github.com/postgrip-io/agent-sdk-protocol).
+
+**Docs:** [postgrip-io.github.io/agent-sdk-typescript](https://postgrip-io.github.io/agent-sdk-typescript/) — quick start, workflow runtime, API guide.
 
 ## Layout
 
