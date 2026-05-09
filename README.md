@@ -2,7 +2,7 @@
 
 [![Docs](https://img.shields.io/badge/docs-site-2563EB?logo=readthedocs&logoColor=white)](https://postgrip-io.github.io/agent-sdk-typescript/)
 [![npm](https://img.shields.io/npm/v/%40postgrip%2Fagent.svg)](https://www.npmjs.com/package/@postgrip/agent)
-[![types](https://img.shields.io/npm/types/%40postgrip%2Fagent.svg)](https://www.npmjs.com/package/@postgrip/agent)
+[![TypeScript](https://img.shields.io/badge/types-TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.npmjs.com/package/@postgrip/agent)
 [![CI](https://github.com/postgrip-io/agent-sdk-typescript/actions/workflows/ci.yml/badge.svg)](https://github.com/postgrip-io/agent-sdk-typescript/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/postgrip-io/agent-sdk-typescript.svg)](LICENSE)
 
