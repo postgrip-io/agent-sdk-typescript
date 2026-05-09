@@ -39,14 +39,19 @@ await client.task.containerExec({
 !!! note
     `container.exec` requires the agent process to have `DOCKER_HOST` set so the container runs through the worker stack's docker socket proxy. Containers run with `--rm --network=none`, no host volume mounts, and the same env-key allowlist as `shell.exec`.
 
-## Wait for a result
+## Inspect or stream task events
 
-`client.task.result(taskId)` returns a promise that resolves when the task reaches a terminal state:
+`TaskClient` doesn't expose a single "wait for result" call for raw tasks — terminal results are workflow-shaped. To watch a `shell.exec` / `container.exec` task progress, stream its event log:
 
 ```ts
-const result = await client.task.result(task.id);
-console.log('result:', result);
+for await (const event of client.task.watchEvents(task.id)) {
+  console.log(event.kind, event.message);
+}
 ```
+
+The async iterator closes when the task reaches a terminal state. For a one-shot snapshot of the events so far, use `client.task.events(task.id)` instead.
+
+The "wait for terminal state and unwrap the value" pattern is the right fit for workflows — see [Start a workflow from elsewhere](#start-a-workflow-from-elsewhere) below, where `await handle.result()` resolves to the workflow's return value.
 
 ## Run an agent
 
