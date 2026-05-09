@@ -1,2 +1,242 @@
-# agent-sdk-typescript
-PostGrip Agent SDK for TypeScript
+# PostGrip Agent TypeScript SDK
+
+This package provides a Temporal-style TypeScript API for the standalone PostGrip Agent runtime service.
+
+It mirrors the common Temporal TypeScript shape documented in Temporal's TypeScript developer guide: a `Connection`, `Client`, `Agent`, registered Workflows, registered Activities, activity helpers such as `heartbeat` and `activityMilestone`, and workflow helpers such as `milestone`, `proxyActivities`, `executeChild`, `continueAsNew`, `sleep`, `condition`, `cancellationRequested`, and `workflowInfo`.
+
+This is not a full Temporal replacement yet. The current PostGrip Agent runtime service supports durable JSON state, namespaces, workflow history, workflow ID reuse policies, memo/search attribute visibility metadata, activity tasks, activity heartbeats, activity cancellation on workflow cancellation, child workflows, continue-as-new, workflow run timeouts, timer tasks, durable schedules, durable signals, replayed queries, durable updates, durable cancellation requests, termination, and history replay for activity, child workflow, `sleep()`, retry, signal, query, update, and cancellation commands. Cancellation scopes, calendars, advanced search queries, and stronger deterministic sandboxing are still future work.
+
+## Example
+
+```ts
+import { Client, Connection, Agent, activityMilestone, condition, continueAsNew, defineQuery, defineSignal, defineUpdate, executeChild, heartbeat, proxyActivities, setHandler } from '@postgrip/agent';
+
+const activities = {
+  async greet(name: string): Promise<string> {
+    return `hello ${name}`;
+  },
+};
+
+const { greet } = proxyActivities<typeof activities>({
+  startToCloseTimeoutMs: 10_000,
+  retry: { maximumAttempts: 3 },
+});
+
+export async function greetingWorkflow(name: string): Promise<string> {
+  return greet(name);
+}
+
+const connection = await Connection.connect({
+  baseUrl: 'http://127.0.0.1:4100',
+  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_AUTH_TOKEN}` },
+});
+const agent = await Agent.create({
+  connection,
+  namespace: 'default',
+  taskQueue: 'default',
+  workflows: { greetingWorkflow },
+  activities,
+  maxConcurrentTaskExecutions: 8,
+});
+
+const client = new Client({ connection });
+const resultPromise = client.workflow.execute(greetingWorkflow, {
+  namespace: 'default',
+  taskQueue: 'default',
+  workflowId: 'greeting-workflow-id',
+  workflowIdReusePolicy: 'allow_duplicate_failed_only',
+  args: ['PostGrip'],
+  workflowRunTimeoutMs: 60_000,
+  retry: { maximumAttempts: 3, initialIntervalMs: 1_000 },
+  memo: { displayName: 'Greeting' },
+  searchAttributes: { customerId: 'cust-1' },
+});
+
+await agent.runUntil(resultPromise);
+console.log(await resultPromise);
+
+const handle = client.workflow.getHandle<string>('greeting-workflow-id');
+console.log(await handle.describe());
+
+await client.workflow.signalWithStart(greetingWorkflow, {
+  workflowId: 'greeting-workflow-id',
+  taskQueue: 'default',
+  args: ['PostGrip'],
+  signal: 'poke',
+  signalArgs: ['wake up'],
+});
+
+const workflows = await client.workflow.list({
+  namespace: 'default',
+  workflowType: 'greetingWorkflow',
+  searchAttributes: { customerId: 'cust-1' },
+  limit: 10,
+  offset: 0,
+});
+const workflowCount = await client.workflow.count({
+  namespace: 'default',
+  workflowType: 'greetingWorkflow',
+  searchAttributes: { customerId: 'cust-1' },
+});
+
+const tasks = await connection.listTasks({
+  namespace: 'default',
+  queue: 'default',
+  type: 'workflow:greetingWorkflow',
+  limit: 10,
+});
+
+const schedule = await client.schedule.createWorkflowSchedule({
+  scheduleId: 'greeting-every-minute',
+  namespace: 'default',
+  taskQueue: 'default',
+  workflow: greetingWorkflow,
+  intervalSeconds: 60,
+  overlapPolicy: 'skip',
+  args: ['Scheduled PostGrip'],
+});
+
+console.log(await client.schedule.get(schedule.id));
+await client.schedule.update(schedule.id, {
+  spec: { interval_seconds: 300 },
+  action: {
+    queue: 'default',
+    workflowType: 'greetingWorkflow',
+    args: ['Updated schedule'],
+  },
+});
+await client.schedule.backfill(schedule.id, {
+  start_at: new Date(Date.now() - 900_000).toISOString(),
+  end_at: new Date().toISOString(),
+});
+await client.schedule.pause(schedule.id, { reason: 'maintenance' });
+const triggered = await client.schedule.trigger(schedule.id, { reason: 'manual run' });
+await client.schedule.unpause(schedule.id);
+```
+
+## Schedules
+
+Schedules are durable interval records. When a schedule becomes due, the agent runtime service creates an ordinary `workflow:<name>` task, records `WorkflowScheduled`, and advances `next_run_at`.
+Paused schedules do not auto-create workflow tasks, but they can still be manually triggered. By default, schedules use `skip` overlap policy, so an automatic tick is skipped while an earlier workflow from the same schedule is still running. Use `overlapPolicy: 'allow_all'` when concurrent runs are intended.
+
+```ts
+await client.schedule.create({
+  id: 'hourly-import',
+  namespace: 'default',
+  overlap_policy: 'allow_all',
+  spec: { interval_seconds: 3600 },
+  action: {
+    queue: 'default',
+    workflowType: 'greetingWorkflow',
+    args: ['from schedule'],
+  },
+});
+```
+
+## Signals
+
+```ts
+const approveSignal = defineSignal<[string]>('approve');
+const approverQuery = defineQuery<string>('approver');
+const renameUpdate = defineUpdate<string, [string]>('rename');
+
+export async function approvalWorkflow(): Promise<string> {
+  let approvedBy = '';
+  setHandler(approveSignal, (name) => {
+    approvedBy = name;
+  });
+  setHandler(renameUpdate, (name) => {
+    approvedBy = name;
+    return approvedBy;
+  });
+  setHandler(approverQuery, () => approvedBy);
+  await condition(() => approvedBy !== '');
+  return approvedBy;
+}
+
+const handle = await client.workflow.start(approvalWorkflow, { taskQueue: 'default' });
+console.log(await handle.query(approverQuery));
+await handle.signal(approveSignal, 'alice');
+console.log(await handle.query(approverQuery));
+const updateHandle = await handle.startUpdate(renameUpdate, 'bob');
+console.log(await updateHandle.result());
+console.log(await handle.query(approverQuery));
+await handle.cancel('no longer needed');
+await handle.terminate('force stop');
+```
+
+`startUpdate` enqueues an `update:<workflowType>` task and returns a handle that can be awaited later. `executeUpdate` is the convenience form that starts the update and waits for the result. The agent replays workflow history, invokes the registered update handler, records the completed update in workflow history, and wakes the workflow task. Later workflow and query replays apply completed update events before continuing.
+
+## Child Workflows
+
+```ts
+export async function childWorkflow(name: string): Promise<string> {
+  return `hello ${name}`;
+}
+
+export async function parentWorkflow(name: string): Promise<string> {
+  return await executeChild(childWorkflow, { args: [name] });
+}
+```
+
+## Continue As New
+
+```ts
+export async function pagedWorkflow(page = 0): Promise<string> {
+  if (page < 10) {
+    continueAsNew(pagedWorkflow, { args: [page + 1] });
+  }
+  return 'done';
+}
+```
+
+## Activity Heartbeats
+
+```ts
+const activities = {
+  async importRows(rows: string[]): Promise<number> {
+    let imported = 0;
+    for (const [index, row] of rows.entries()) {
+      imported += row.length;
+      await heartbeat({ imported });
+      await activityMilestone('import row', { index: index + 1, total: rows.length });
+    }
+    return imported;
+  },
+};
+```
+
+Use milestones for ordered steps. A 10-step activity should emit one milestone per completed step; clients can call `handle.watchEvents()` or `client.task.watchEvents(taskId)` and render `kind === 'milestone'` events as a checklist.
+
+`startToCloseTimeoutMs` is durable. It is encoded as the activity task lease timeout and recorded in `ActivityTaskScheduled` with retry policy metadata. The agent renews activity leases while execution is in progress. If a leased activity misses its deadline, the agent runtime service records `ActivityTaskTimedOut`, fails the activity task, and wakes the blocked workflow task for replay.
+
+The agent also performs basic workflow sandbox checks before execution and rejects common nondeterministic APIs such as `Date.now()`, `new Date()`, `Math.random()`, `crypto.randomUUID()`, `setTimeout()`, and `setInterval()` inside workflow functions. Generate random values and wall-clock timestamps in activities or pass them as explicit workflow inputs.
+
+Workflow `retry` is durable on starts, child workflows, continue-as-new, and workflow schedules. A failed attempt records `WorkflowExecutionAttemptFailed`, the retry delay records `WorkflowExecutionRetryScheduled`, and `WorkflowHandle.result()` follows the active retry task until the workflow reaches a terminal state.
+
+`Client.workflow.signalWithStart()` mirrors the common Temporal client shape: if the workflow does not exist, the agent runtime service creates the workflow execution and records the signal in the same durable history; if it is already running, the agent runtime service only appends the signal and unblocks the workflow task.
+
+`WorkflowHandle.describe()` returns the workflow id, current task id, namespace, task queue, workflow type, status, attempt, run timeout, retry policy, memo, search attributes, timestamps, and terminal result/error when present.
+
+## Lower-level task API
+
+```ts
+const task = await client.task.shellExec({
+  queue: 'default',
+  command: 'echo',
+  args: ['hello from agent'],
+});
+```
+
+`containerExec` is the polyglot equivalent — the Go agent launches a per-task container via its docker CLI (proxied through the worker stack's docker socket proxy) so you can run Node/Bun/Python/Go without baking those runtimes into the agent image. Requires the agent process to have `DOCKER_HOST` set; the container runs with `--rm --network=none` and no host mounts, and the same env-key allowlist as `shellExec` rejects `DOCKER_*`, `POSTGRIP_*`, and host loader/interpreter prefixes.
+
+```ts
+const task = await client.task.containerExec({
+  queue: 'default',
+  image: 'node:22-alpine',
+  command: 'node',
+  args: ['-e', "console.log('hi from node')"],
+  pull_policy: 'missing',
+  timeout_seconds: 60,
+});
+```
