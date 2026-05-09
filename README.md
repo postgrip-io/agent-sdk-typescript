@@ -1,6 +1,16 @@
 # PostGrip Agent TypeScript SDK
 
-This package provides a Temporal-style TypeScript API for the standalone PostGrip Agent runtime service.
+This package provides a Temporal-style TypeScript API for the standalone PostGrip Agent runtime service. Source for `agent-sdk-go` and `agent-sdk-python` lives in sibling repos under [`github.com/postgrip-io`](https://github.com/postgrip-io); the wire-format types are tracked in [`agent-sdk-protocol`](https://github.com/postgrip-io/agent-sdk-protocol).
+
+## Layout
+
+```text
+src/                  # TypeScript sources — Connection / Client / Agent / workflow runtime
+test/                 # reserved for future vitest unit / integration tests
+doc/                  # reserved for longer-form prose docs
+.github/workflows/    # CI: typecheck + build
+```
+
 
 It mirrors the common Temporal TypeScript shape documented in Temporal's TypeScript developer guide: a `Connection`, `Client`, `Agent`, registered Workflows, registered Activities, activity helpers such as `heartbeat` and `activityMilestone`, and workflow helpers such as `milestone`, `proxyActivities`, `executeChild`, `continueAsNew`, `sleep`, `condition`, `cancellationRequested`, and `workflowInfo`.
 
