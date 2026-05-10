@@ -314,6 +314,7 @@ export interface WorkflowExecution<R = unknown> {
   type: string;
   queue: string;
   task_id: string;
+  agent_id?: string;
   state: 'running' | 'succeeded' | 'failed' | 'continued_as_new';
   attempt?: number;
   run_timeout_ms?: number;
@@ -448,6 +449,17 @@ export interface ActivityInvocationPayload<Args extends unknown[] = unknown[]> {
   cancellationType?: CancellationType;
   retry?: RetryPolicy;
   args: Args;
+}
+
+export interface WorkflowRuntimePayload {
+  runtime_id?: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  working_dir?: string;
+  namespace?: string;
+  queue?: string;
+  timeout_seconds?: number;
 }
 
 export interface TimerPayload {

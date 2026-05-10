@@ -9,8 +9,12 @@
 //
 //   export POSTGRIP_AGENTORCHESTRATOR_URL=https://agentorchestrator.postgrip.app
 //   export POSTGRIP_AGENT_AUTH_TOKEN=...
-//   export POSTGRIP_AGENT_ENROLLMENT_KEY=...
+//   export POSTGRIP_AGENT_ENROLLMENT_KEY=...       # local standalone only
 //   bun run example/longrun.ts
+//
+// In production the PostGrip host agent launches this runtime and injects a
+// delegated agent session. `POSTGRIP_AGENT_ENROLLMENT_KEY` is only for local
+// standalone runs where no host agent is supervising the runtime.
 
 import {
   Agent,
