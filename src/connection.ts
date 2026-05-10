@@ -31,7 +31,6 @@ import {
   HEADER_AGENT_SIGNATURE,
   HEADER_AGENT_SIGNATURE_KEY_ID,
   HEADER_AGENT_SIGNATURE_TIMESTAMP,
-  generateSigningKey,
   importSigningKeyFromBase64,
   signRequest,
   type AgentSigningKey,
@@ -45,7 +44,6 @@ export interface ConnectionOptions {
 }
 
 export interface AgentAuthOptions {
-  enrollmentKey?: string;
   agentId?: string;
   workerId?: string;
   name?: string;
@@ -86,9 +84,7 @@ export class Connection {
   private readonly headers: HeadersInit | undefined;
   private agentAuth: AgentAuthOptions = {};
   private agentSessionRefresh: Promise<void> | undefined;
-  // Ed25519 keypair the agent uses to sign requests to agent-authed
-  // endpoints. Generated lazily on first enroll and reused for the lifetime
-  // of the Connection.
+  // Ed25519 keypair injected by the host agent for managed workflow runtimes.
   private agentSigningKey: AgentSigningKey | undefined;
 
   private constructor(options: Required<Pick<ConnectionOptions, 'baseUrl'>> & Omit<ConnectionOptions, 'baseUrl'>) {
@@ -127,11 +123,11 @@ export class Connection {
     if (this.agentAuth.accessToken && accessTokenIsFresh(this.agentAuth.accessExpiresAt)) {
       return true;
     }
-    if (!this.agentAuth.refreshToken && !this.agentAuth.enrollmentKey) {
-      return false;
+    if (!this.agentAuth.refreshToken) {
+      throw new Error('postgrip-agent: managed runtime credentials are required; submit workflow.runtime work to a host agent instead of enrolling SDK agents');
     }
     if (!this.agentSessionRefresh) {
-      this.agentSessionRefresh = this.refreshOrEnrollAgentSession().finally(() => {
+      this.agentSessionRefresh = this.refreshAgentSession().finally(() => {
         this.agentSessionRefresh = undefined;
       });
     }
@@ -156,6 +152,9 @@ export class Connection {
   }
 
   async enqueueTask<P = unknown, R = unknown>(request: EnqueueTaskRequest<P>): Promise<Task<P, R>> {
+    if (runtimeOnlyTaskType(request.type) && !this.hasAgentRuntimeCredentials()) {
+      throw new Error('postgrip-agent: workflow tasks can only be enqueued from a managed runtime; submit workflow.runtime to an agent pool');
+    }
     return this.request('POST', '/api/v1/tasks', request);
   }
 
@@ -309,6 +308,9 @@ export class Connection {
     workflowId: string,
     request: SignalWithStartWorkflowRequest<WorkflowArgs, SignalArgs>,
   ): Promise<SignalWithStartWorkflowResponse<WorkflowArgs, R>> {
+    if (!this.hasAgentRuntimeCredentials()) {
+      throw new Error('postgrip-agent: signal-with-start can only run from a managed runtime; submit workflow.runtime to an agent pool');
+    }
     return this.request('POST', `/api/v1/workflows/${encodeURIComponent(workflowId)}/signal-with-start`, request);
   }
 
@@ -368,36 +370,15 @@ export class Connection {
     return `/api/v1/agent/tasks/${encodeURIComponent(taskId)}/${action}?agent_id=${encodeURIComponent(agentId)}`;
   }
 
-  private async refreshOrEnrollAgentSession(): Promise<void> {
+  private async refreshAgentSession(): Promise<void> {
     if (this.agentAuth.refreshToken) {
-      try {
-        const session = await this.request<AgentSessionResponse>('POST', '/api/v1/agent/session/refresh', {
-          refreshToken: this.agentAuth.refreshToken,
-        });
-        this.applyAgentSession(session);
-        return;
-      } catch (err) {
-        if (!this.agentAuth.enrollmentKey) {
-          throw err;
-        }
-      }
-    }
-    if (!this.agentAuth.enrollmentKey) {
+      const session = await this.request<AgentSessionResponse>('POST', '/api/v1/agent/session/refresh', {
+        refreshToken: this.agentAuth.refreshToken,
+      });
+      this.applyAgentSession(session);
       return;
     }
-    if (!this.agentSigningKey) {
-      this.agentSigningKey = generateSigningKey();
-    }
-    const session = await this.request<AgentSessionResponse>('POST', '/api/v1/agent/enroll', {
-      enrollmentKey: this.agentAuth.enrollmentKey,
-      agentId: this.agentAuth.agentId,
-      name: this.agentAuth.name ?? this.agentAuth.agentId,
-      host: this.agentAuth.host,
-      namespaces: [this.agentAuth.namespace ?? 'default'],
-      queues: [this.agentAuth.queue ?? 'default'],
-      signaturePublicKey: this.agentSigningKey.publicKeyBase64,
-    });
-    this.applyAgentSession(session);
+    throw new Error('postgrip-agent: managed runtime refresh token is required');
   }
 
   private applyAgentSession(session: AgentSessionResponse): void {
@@ -466,6 +447,10 @@ export class Connection {
       || reqPath.startsWith('/api/v1/workflows/')
       || reqPath === '/api/v1/namespaces';
   }
+
+  private hasAgentRuntimeCredentials(): boolean {
+    return Boolean(this.agentAuth.accessToken || this.agentAuth.refreshToken);
+  }
 }
 
 function accessTokenIsFresh(expiresAt: string | undefined): boolean {
@@ -480,4 +465,13 @@ function normalizeAgentAuthOptions(options: AgentAuthOptions): AgentAuthOptions 
     ...canonical,
     agentId: options.agentId ?? workerId,
   };
+}
+
+function runtimeOnlyTaskType(taskType: string): boolean {
+  const normalized = taskType.trim();
+  return normalized === 'timer'
+    || normalized.startsWith('workflow:')
+    || normalized.startsWith('activity:')
+    || normalized.startsWith('query:')
+    || normalized.startsWith('update:');
 }

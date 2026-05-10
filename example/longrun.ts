@@ -1,20 +1,19 @@
 // Long-running sequential example.
 //
-// Runs five workflows back-to-back. Each workflow chains five activity
-// calls separated by 13-second durable timers, so a single workflow lasts
-// ~65-75 seconds and a full run takes ~5-6 minutes. Exercises the TS SDK's
-// replay, suspension, and durable-timer paths under realistic timing.
+// Running it locally submits a workflow.runtime task to an existing agent
+// pool. When the host agent launches the runtime, it runs five workflows
+// back-to-back, each chaining five activity calls separated by durable
+// timers.
 //
 // Run:
 //
 //   export POSTGRIP_AGENTORCHESTRATOR_URL=https://agentorchestrator.postgrip.app
 //   export POSTGRIP_AGENT_AUTH_TOKEN=...
-//   export POSTGRIP_AGENT_ENROLLMENT_KEY=...       # local standalone only
+//   export SDK_EXAMPLE_RUNTIME_ARGS_JSON='["-lc","bun run example/longrun.ts"]'
 //   bun run example/longrun.ts
 //
-// In production the PostGrip host agent launches this runtime and injects a
-// delegated agent session. `POSTGRIP_AGENT_ENROLLMENT_KEY` is only for local
-// standalone runs where no host agent is supervising the runtime.
+// The SDK does not enroll standalone agents; host agents inject delegated
+// managed-runtime credentials.
 
 import {
   Agent,
@@ -26,9 +25,11 @@ import {
   type WorkflowRegistry,
 } from '@postgrip/agent';
 
-const STEPS_PER_WORKFLOW = 5;
-const WORKFLOW_RUNS = 5;
-const STEP_SLEEP_MS = 13_000;
+const STEPS_PER_WORKFLOW = readPositiveIntegerAny(['POSTGRIP_EXAMPLE_STEPS', 'SDK_EXAMPLE_STEPS'], 5);
+const WORKFLOW_RUNS = readPositiveIntegerAny(['POSTGRIP_EXAMPLE_WORKFLOW_RUNS', 'SDK_EXAMPLE_WORKFLOW_RUNS'], 5);
+const STEP_SLEEP_MS = readPositiveIntegerAny(['POSTGRIP_EXAMPLE_STEP_SLEEP_SECONDS', 'SDK_EXAMPLE_STEP_SLEEP_SECONDS'], 13) * 1000;
+const WORKFLOW_TIMEOUT_MS = readPositiveIntegerAny(['POSTGRIP_EXAMPLE_WORKFLOW_TIMEOUT_SECONDS', 'SDK_EXAMPLE_WORKFLOW_TIMEOUT_SECONDS'], 5 * 60) * 1000;
+const RUN_LABEL = envAny(['POSTGRIP_EXAMPLE_RUN_LABEL', 'SDK_EXAMPLE_RUN_LABEL'], 'PostGrip');
 
 const activities = {
   async processStep(name: string, step: number): Promise<string> {
@@ -53,17 +54,29 @@ const workflows = { LongRunningWorkflow } as unknown as WorkflowRegistry;
 const activityRegistry = activities as unknown as ActivityRegistry;
 
 async function main(): Promise<void> {
+  if (process.env.POSTGRIP_AGENT_MANAGED_RUNTIME !== 'true') {
+    await submitManagedRuntime();
+    return;
+  }
+
   const baseUrl = process.env.POSTGRIP_AGENTORCHESTRATOR_URL ?? process.env.POSTGRIP_AGENT_LIVE_SERVER_URL ?? 'https://agentorchestrator.postgrip.app';
   const authToken = process.env.POSTGRIP_AGENT_AUTH_TOKEN ?? '';
+  const tenantId = process.env.POSTGRIP_AGENT_TENANT_ID ?? '';
   const taskQueue = process.env.POSTGRIP_AGENT_TASK_QUEUE ?? 'typescript-longrun';
+  const agentId = process.env.POSTGRIP_AGENT_ID ?? 'typescript-longrun-agent';
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  if (tenantId) headers['x-postgrip-agent-tenant-id'] = tenantId;
 
   const connection = await Connection.connect({
     baseUrl,
-    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+    headers,
   });
 
   const agent = await Agent.create({
     connection,
+    identity: agentId,
+    name: agentId,
     taskQueue,
     workflows,
     activities: activityRegistry,
@@ -76,13 +89,13 @@ async function main(): Promise<void> {
     const overallStart = Date.now();
     for (let i = 1; i <= WORKFLOW_RUNS; i++) {
       const runStart = Date.now();
-      const workflowId = `ts-longrun-${crypto.randomUUID()}-${i}`;
+      const workflowId = `ts-longrun-${slug(RUN_LABEL)}-${crypto.randomUUID()}-${i}`;
       console.log(`[${i}/${WORKFLOW_RUNS}] starting ${workflowId}`);
       const result = await client.workflow.execute('LongRunningWorkflow', {
         workflowId,
         taskQueue,
-        args: [`PostGrip-${i}`, STEPS_PER_WORKFLOW],
-        timeoutMs: 5 * 60_000,
+        args: [`${RUN_LABEL}-${i}`, STEPS_PER_WORKFLOW],
+        timeoutMs: WORKFLOW_TIMEOUT_MS,
       });
       console.log(`[${i}/${WORKFLOW_RUNS}] ${workflowId} -> ${JSON.stringify(result)} (${Math.round((Date.now() - runStart) / 1000)}s)`);
     }
@@ -94,3 +107,79 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+function readPositiveInteger(name: string, fallback: number): number {
+  const value = process.env[name];
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(`invalid ${name}=${JSON.stringify(value)}; using ${fallback}`);
+    return fallback;
+  }
+  return parsed;
+}
+
+function readPositiveIntegerAny(names: string[], fallback: number): number {
+  for (const name of names) {
+    if (process.env[name]) return readPositiveInteger(name, fallback);
+  }
+  return fallback;
+}
+
+function envAny(names: string[], fallback: string): string {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  return fallback;
+}
+
+function readStringArrayJSON(name: string): string[] | undefined {
+  const value = process.env[name];
+  if (!value) return undefined;
+  const parsed = JSON.parse(value) as unknown;
+  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string')) {
+    throw new Error(`${name} must be a JSON array of strings`);
+  }
+  return parsed;
+}
+
+async function submitManagedRuntime(): Promise<void> {
+  const baseUrl = process.env.POSTGRIP_AGENTORCHESTRATOR_URL ?? process.env.POSTGRIP_AGENT_LIVE_SERVER_URL ?? 'https://agentorchestrator.postgrip.app';
+  const authToken = process.env.POSTGRIP_AGENT_AUTH_TOKEN ?? '';
+  const tenantId = process.env.POSTGRIP_AGENT_TENANT_ID ?? '';
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  if (tenantId) headers['x-postgrip-agent-tenant-id'] = tenantId;
+
+  const connection = await Connection.connect({ baseUrl, headers });
+  const client = new Client({ connection });
+  const queue = envAny(['POSTGRIP_EXAMPLE_RUNTIME_QUEUE', 'SDK_EXAMPLE_RUNTIME_QUEUE'], 'default');
+  const runtimeQueue = envAny(['POSTGRIP_EXAMPLE_RUNTIME_CHILD_QUEUE', 'SDK_EXAMPLE_RUNTIME_CHILD_QUEUE'], queue);
+  const args = readStringArrayJSON('SDK_EXAMPLE_RUNTIME_ARGS_JSON')
+    ?? readStringArrayJSON('POSTGRIP_EXAMPLE_RUNTIME_ARGS_JSON');
+  if (!args) {
+    throw new Error('SDK_EXAMPLE_RUNTIME_ARGS_JSON is required to submit this runtime to an agent pool');
+  }
+  const task = await client.task.workflowRuntime({
+    queue,
+    runtimeQueue,
+    command: envAny(['POSTGRIP_EXAMPLE_RUNTIME_COMMAND', 'SDK_EXAMPLE_RUNTIME_COMMAND'], 'sh'),
+    args,
+    working_dir: envAny(['POSTGRIP_EXAMPLE_RUNTIME_WORKING_DIR', 'SDK_EXAMPLE_RUNTIME_WORKING_DIR'], ''),
+    timeout_seconds: readPositiveIntegerAny(['POSTGRIP_EXAMPLE_RUNTIME_TIMEOUT_SECONDS', 'SDK_EXAMPLE_RUNTIME_TIMEOUT_SECONDS'], 900),
+    leaseTimeoutSeconds: readPositiveIntegerAny(['POSTGRIP_EXAMPLE_RUNTIME_LEASE_TIMEOUT_SECONDS', 'SDK_EXAMPLE_RUNTIME_LEASE_TIMEOUT_SECONDS'], 30),
+    env: {
+      SDK_EXAMPLE_RUN_LABEL: RUN_LABEL,
+      SDK_EXAMPLE_WORKFLOW_RUNS: String(WORKFLOW_RUNS),
+      SDK_EXAMPLE_STEPS: String(STEPS_PER_WORKFLOW),
+      SDK_EXAMPLE_STEP_SLEEP_SECONDS: String(STEP_SLEEP_MS / 1000),
+      SDK_EXAMPLE_WORKFLOW_TIMEOUT_SECONDS: String(WORKFLOW_TIMEOUT_MS / 1000),
+    },
+  });
+  console.log(`submitted managed workflow runtime task=${task.id} queue=${queue} runtimeQueue=${runtimeQueue}`);
+}
+
+function slug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'run';
+}

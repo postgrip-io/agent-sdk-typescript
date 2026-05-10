@@ -25,7 +25,6 @@ export interface AgentOptions {
   workflows: WorkflowRegistry;
   activities?: ActivityRegistry;
   identity?: string;
-  enrollmentKey?: string;
   name?: string;
   host?: string;
   pollIntervalMs?: number;
@@ -62,11 +61,13 @@ export class Agent {
     this.workflows = options.workflows;
     this.activities = options.activities ?? {};
     const managedRuntime = process.env.POSTGRIP_AGENT_MANAGED_RUNTIME === 'true';
+    if (!managedRuntime) {
+      throw new Error('postgrip-agent: Agent workers must be launched by a PostGrip host agent as managed workflow runtimes; submit workflow.runtime work to an agent pool instead');
+    }
     this.identity = options.identity ?? process.env.POSTGRIP_AGENT_ID ?? `ts-agent-${crypto.randomUUID()}`;
     this.pollIntervalMs = options.pollIntervalMs ?? 1000;
     this.maxConcurrentTasks = Math.max(1, options.maxConcurrentTaskExecutions ?? options.maxConcurrentTasks ?? 4);
     this.connection.configureAgentAuth?.({
-      enrollmentKey: options.enrollmentKey ?? (managedRuntime ? undefined : process.env.POSTGRIP_AGENT_ENROLLMENT_KEY),
       agentId: this.identity,
       name: options.name,
       host: options.host,

@@ -89,34 +89,22 @@ describe('PostGrip Agent TypeScript Connection', () => {
     expect(response).toEqual({ trace: 'trace-1' });
   });
 
-  it('uses enrolled agent tokens only for agent task routes', async () => {
+  it('uses managed agent tokens only for agent task routes', async () => {
     const seenAuth: Record<string, string | null> = {};
     const connection = await Connection.connect({
       baseUrl: 'http://agent.test',
       headers: { Authorization: 'Bearer management-token' },
-      agentAuth: { enrollmentKey: 'enroll-key' },
+      agentAuth: {
+        accessToken: 'agent-access-token',
+        refreshToken: 'agent-refresh-token',
+        accessExpiresAt: '2999-01-01T00:00:00Z',
+      },
       fetch: vi.fn<typeof fetch>(async (input, init) => {
         const url = new URL(String(input));
         const headers = init?.headers as Headers;
         seenAuth[url.pathname] = headers.get('authorization');
         if (url.pathname === '/healthz') {
           return new Response(JSON.stringify({ status: 'ok' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-        if (url.pathname === '/api/v1/agent/enroll') {
-          return new Response(JSON.stringify({
-            agentId: 'agent-1',
-            tenantId: 'default',
-            tokenFamilyId: 'family-1',
-            accessToken: 'agent-access-token',
-            refreshToken: 'agent-refresh-token',
-            accessExpiresAt: '2999-01-01T00:00:00Z',
-            refreshExpiresAt: '2999-01-02T00:00:00Z',
-            status: 'online',
-            trustState: 'trusted',
-          }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           });
@@ -137,8 +125,7 @@ describe('PostGrip Agent TypeScript Connection', () => {
     await connection.enqueueTask({ type: 'noop' });
     await connection.pollTask({ queue: 'default', agentId: 'agent-1', waitSeconds: 0 });
 
-    expect(seenAuth['/api/v1/tasks']).toBe('Bearer management-token');
-    expect(seenAuth['/api/v1/agent/enroll']).toBe('Bearer management-token');
+    expect(seenAuth['/api/v1/tasks']).toBe('Bearer agent-access-token');
     expect(seenAuth['/api/v1/agent/poll']).toBe('Bearer agent-access-token');
   });
 
@@ -147,25 +134,6 @@ describe('PostGrip Agent TypeScript Connection', () => {
       const url = new URL(String(input));
       if (url.pathname === '/healthz') {
         return new Response(JSON.stringify({ status: 'ok' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.pathname === '/api/v1/agent/enroll') {
-        const body = JSON.parse(String(init?.body ?? '{}'));
-        expect(body.workerId).toBeUndefined();
-        expect(body.agentId).toBe('agent-1');
-        return new Response(JSON.stringify({
-          agentId: 'agent-1',
-          tenantId: 'default',
-          tokenFamilyId: 'family-1',
-          accessToken: 'agent-access-token',
-          refreshToken: 'agent-refresh-token',
-          accessExpiresAt: '2999-01-01T00:00:00Z',
-          refreshExpiresAt: '2999-01-02T00:00:00Z',
-          status: 'online',
-          trustState: 'trusted',
-        }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -182,37 +150,23 @@ describe('PostGrip Agent TypeScript Connection', () => {
 
     const connection = await Connection.connect({
       baseUrl: 'http://agent.test',
-      agentAuth: { enrollmentKey: 'enroll-key', agentId: 'agent-1' },
+      agentAuth: {
+        agentId: 'agent-1',
+        accessToken: 'agent-access-token',
+        refreshToken: 'agent-refresh-token',
+        accessExpiresAt: '2999-01-01T00:00:00Z',
+      },
       fetch: fetchMock,
     });
 
     await expect(connection.pollTask({ queue: 'default', agentId: 'agent-1', waitSeconds: 0 })).resolves.toBeNull();
   });
 
-  it('maps deprecated workerId options to canonical agent payloads', async () => {
+  it('maps deprecated workerId options to canonical agent poll options', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
       const url = new URL(String(input));
       if (url.pathname === '/healthz') {
         return new Response(JSON.stringify({ status: 'ok' }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-      if (url.pathname === '/api/v1/agent/enroll') {
-        const body = JSON.parse(String(init?.body ?? '{}'));
-        expect(body.workerId).toBeUndefined();
-        expect(body.agentId).toBe('agent-compat');
-        return new Response(JSON.stringify({
-          agentId: 'agent-compat',
-          tenantId: 'default',
-          tokenFamilyId: 'family-1',
-          accessToken: 'agent-access-token',
-          refreshToken: 'agent-refresh-token',
-          accessExpiresAt: '2999-01-01T00:00:00Z',
-          refreshExpiresAt: '2999-01-02T00:00:00Z',
-          status: 'online',
-          trustState: 'trusted',
-        }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -229,11 +183,74 @@ describe('PostGrip Agent TypeScript Connection', () => {
 
     const connection = await Connection.connect({
       baseUrl: 'http://agent.test',
-      agentAuth: { enrollmentKey: 'enroll-key', workerId: 'agent-compat' },
+      agentAuth: {
+        workerId: 'agent-compat',
+        accessToken: 'agent-access-token',
+        refreshToken: 'agent-refresh-token',
+        accessExpiresAt: '2999-01-01T00:00:00Z',
+      },
       fetch: fetchMock,
     });
 
     await expect(connection.pollTask({ queue: 'default', workerId: 'agent-compat', waitSeconds: 0 })).resolves.toBeNull();
+  });
+
+  it('blocks workflow-family task submission outside managed runtimes', async () => {
+    const connection = await Connection.connect({
+      baseUrl: 'http://agent.test',
+      fetch: vi.fn<typeof fetch>(async (input) => {
+        const url = new URL(String(input));
+        if (url.pathname === '/healthz') {
+          return new Response(JSON.stringify({ status: 'ok' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        throw new Error(`unexpected request ${url.pathname}`);
+      }),
+    });
+
+    await expect(connection.enqueueTask({ type: 'workflow:ExampleWorkflow' }))
+      .rejects.toThrow('workflow.runtime');
+  });
+
+  it('keeps workflow.runtime as the external workflow submission path', async () => {
+    let seenBody: EnqueueTaskRequest | undefined;
+    const connection = await Connection.connect({
+      baseUrl: 'http://agent.test',
+      headers: { Authorization: 'Bearer management-token' },
+      fetch: vi.fn<typeof fetch>(async (input, init) => {
+        const url = new URL(String(input));
+        if (url.pathname === '/healthz') {
+          return new Response(JSON.stringify({ status: 'ok' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.pathname === '/api/v1/tasks') {
+          seenBody = JSON.parse(String(init?.body ?? '{}')) as EnqueueTaskRequest;
+          return new Response(JSON.stringify(workflowTask({
+            id: 'runtime-task',
+            type: 'workflow.runtime',
+            payload: seenBody.payload,
+          })), {
+            status: 202,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        throw new Error(`unexpected request ${url.pathname}`);
+      }),
+    });
+    const client = new Client({ connection });
+
+    const task = await client.task.workflowRuntime({
+      queue: 'default',
+      command: 'sh',
+      args: ['-lc', 'echo runtime'],
+    });
+
+    expect(task.id).toBe('runtime-task');
+    expect(seenBody?.type).toBe('workflow.runtime');
   });
 });
 
@@ -389,17 +406,28 @@ describe('PostGrip Agent TypeScript Client', () => {
 
 describe('PostGrip Agent TypeScript Agent', () => {
   it('fails unsupported task types instead of completing them', async () => {
+    const previousManagedRuntime = process.env.POSTGRIP_AGENT_MANAGED_RUNTIME;
+    process.env.POSTGRIP_AGENT_MANAGED_RUNTIME = 'true';
     const connection = {
       health: vi.fn(async () => ({ status: 'ok' })),
       heartbeatTask: vi.fn(async () => workflowTask({ state: 'leased' })),
       appendTaskEvent: vi.fn(async () => ({ id: 'event-1' })),
       failTask: vi.fn(async () => workflowTask({ state: 'failed' })),
     };
-    const agent = await Agent.create({
-      connection: connection as unknown as Connection,
-      taskQueue: 'default',
-      workflows: {},
-    });
+    let agent: Agent;
+    try {
+      agent = await Agent.create({
+        connection: connection as unknown as Connection,
+        taskQueue: 'default',
+        workflows: {},
+      });
+    } finally {
+      if (previousManagedRuntime == null) {
+        delete process.env.POSTGRIP_AGENT_MANAGED_RUNTIME;
+      } else {
+        process.env.POSTGRIP_AGENT_MANAGED_RUNTIME = previousManagedRuntime;
+      }
+    }
 
     await (agent as unknown as { executeTask(task: Task): Promise<void> }).executeTask(workflowTask({
       id: 'unknown-task-1',

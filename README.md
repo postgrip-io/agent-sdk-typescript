@@ -27,7 +27,9 @@ This is not a full Temporal replacement yet. The current PostGrip Agent runtime 
 ## Example
 
 ```ts
-import { Client, Connection, Agent, activityMilestone, condition, continueAsNew, defineQuery, defineSignal, defineUpdate, executeChild, heartbeat, proxyActivities, setHandler } from '@postgrip/agent';
+// workflow-runtime.ts
+// This file is launched by a PostGrip host agent from a workflow.runtime task.
+import { Agent, Client, Connection, proxyActivities } from '@postgrip/agent';
 
 const activities = {
   async greet(name: string): Promise<string> {
@@ -46,7 +48,6 @@ export async function greetingWorkflow(name: string): Promise<string> {
 
 const connection = await Connection.connect({
   baseUrl: 'http://127.0.0.1:4100',
-  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_AUTH_TOKEN}` },
 });
 const agent = await Agent.create({
   connection,
@@ -72,6 +73,39 @@ const resultPromise = client.workflow.execute(greetingWorkflow, {
 
 await agent.runUntil(resultPromise);
 console.log(await resultPromise);
+```
+
+Submit that runtime to an existing agent pool from your client process:
+
+```ts
+// submit-runtime.ts
+import { Client, Connection } from '@postgrip/agent';
+
+const connection = await Connection.connect({
+  baseUrl: 'https://agentorchestrator.postgrip.app',
+  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_AUTH_TOKEN}` },
+});
+const client = new Client({ connection });
+
+await client.task.workflowRuntime({
+  queue: 'default',
+  command: 'node',
+  args: ['dist/workflow-runtime.js'],
+  runtimeQueue: 'default',
+  env: {
+    NODE_ENV: 'production',
+  },
+});
+```
+
+Inside a managed runtime, the workflow client can inspect and interact with workflows:
+
+```ts
+import { Client, Connection } from '@postgrip/agent';
+
+const client = new Client({
+  connection: await Connection.connect({ baseUrl: 'http://127.0.0.1:4100' }),
+});
 
 const handle = client.workflow.getHandle<string>('greeting-workflow-id');
 console.log(await handle.describe());
