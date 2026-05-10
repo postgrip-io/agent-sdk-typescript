@@ -21,7 +21,7 @@ import type {
 export interface AgentOptions {
   connection: Connection;
   namespace?: string;
-  taskQueue: string;
+  taskQueue?: string;
   workflows: WorkflowRegistry;
   activities?: ActivityRegistry;
   identity?: string;
@@ -37,6 +37,8 @@ export interface AgentShutdownOptions {
   timeoutMs?: number;
 }
 
+const WORKFLOW_RUNTIME_TASK_TYPES = ['workflow:', 'activity:', 'query:', 'update:'];
+
 export class Agent {
   private readonly connection: Connection;
   private readonly namespace: string;
@@ -51,20 +53,29 @@ export class Agent {
 
   private constructor(options: AgentOptions) {
     this.connection = options.connection;
-    this.namespace = options.namespace ?? 'default';
-    this.taskQueue = options.taskQueue;
+    this.namespace = options.namespace ?? process.env.POSTGRIP_AGENT_NAMESPACE ?? 'default';
+    const taskQueue = options.taskQueue ?? process.env.POSTGRIP_AGENT_TASK_QUEUE;
+    if (!taskQueue) {
+      throw new Error('taskQueue is required');
+    }
+    this.taskQueue = taskQueue;
     this.workflows = options.workflows;
     this.activities = options.activities ?? {};
-    this.identity = options.identity ?? `ts-agent-${crypto.randomUUID()}`;
+    const managedRuntime = process.env.POSTGRIP_AGENT_MANAGED_RUNTIME === 'true';
+    this.identity = options.identity ?? process.env.POSTGRIP_AGENT_ID ?? `ts-agent-${crypto.randomUUID()}`;
     this.pollIntervalMs = options.pollIntervalMs ?? 1000;
     this.maxConcurrentTasks = Math.max(1, options.maxConcurrentTaskExecutions ?? options.maxConcurrentTasks ?? 4);
     this.connection.configureAgentAuth?.({
-      enrollmentKey: options.enrollmentKey ?? process.env.POSTGRIP_AGENT_ENROLLMENT_KEY,
+      enrollmentKey: options.enrollmentKey ?? (managedRuntime ? undefined : process.env.POSTGRIP_AGENT_ENROLLMENT_KEY),
       agentId: this.identity,
       name: options.name,
       host: options.host,
       namespace: this.namespace,
       queue: this.taskQueue,
+      accessToken: process.env.POSTGRIP_AGENT_ACCESS_TOKEN,
+      refreshToken: process.env.POSTGRIP_AGENT_REFRESH_TOKEN,
+      accessExpiresAt: process.env.POSTGRIP_AGENT_ACCESS_EXPIRES_AT,
+      signingPrivateKey: process.env.POSTGRIP_AGENT_SIGNING_PRIVATE_KEY,
     });
   }
 
@@ -112,6 +123,7 @@ export class Agent {
           queue: this.taskQueue,
           agentId: this.identity,
           waitSeconds: 20,
+          taskTypes: WORKFLOW_RUNTIME_TASK_TYPES,
           signal: options.signal,
         });
       } catch (err) {

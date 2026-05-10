@@ -28,8 +28,13 @@ export {
 } from './workflow.js';
 export { Agent } from './agent.js';
 export type { AgentOptions, AgentShutdownOptions } from './agent.js';
-export { Agent as Worker } from './agent.js';
-export type { AgentOptions as WorkerOptions, AgentShutdownOptions as WorkerShutdownOptions } from './agent.js';
+export { Agent as Worker, Agent as WorkflowWorker } from './agent.js';
+export type {
+  AgentOptions as WorkerOptions,
+  AgentOptions as WorkflowWorkerOptions,
+  AgentShutdownOptions as WorkerShutdownOptions,
+  AgentShutdownOptions as WorkflowWorkerShutdownOptions,
+} from './agent.js';
 export type {
   ActivityFunction,
   ActivityInvocationPayload,
@@ -79,6 +84,7 @@ export type {
   WorkflowQueryPayload,
   WorkflowPayload,
   WorkflowRegistry,
+  WorkflowRuntimePayload,
   SignalWithStartWorkflowRequest,
   SignalWithStartWorkflowResponse,
   WorkflowSignalDefinition,

@@ -8,11 +8,12 @@
 //
 //   export POSTGRIP_AGENT_LIVE_SERVER_URL=https://postgrip.app
 //   export POSTGRIP_AGENT_AUTH_TOKEN=...           # management-side bearer
-//   export POSTGRIP_AGENT_ENROLLMENT_KEY=...       # agent-side enrollment key
+//   export POSTGRIP_AGENT_ENROLLMENT_KEY=...       # local standalone only
 //   bun run example/greeting.ts
 //
-// `POSTGRIP_AGENT_ENROLLMENT_KEY` is read transparently by the Agent — the
-// worker exchanges it for a refreshable agent session before its first poll.
+// In production the PostGrip host agent launches this runtime and injects a
+// delegated agent session. `POSTGRIP_AGENT_ENROLLMENT_KEY` is only for local
+// standalone runs where no host agent is supervising the runtime.
 
 import {
   Agent,

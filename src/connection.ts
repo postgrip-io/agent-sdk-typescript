@@ -32,6 +32,7 @@ import {
   HEADER_AGENT_SIGNATURE_KEY_ID,
   HEADER_AGENT_SIGNATURE_TIMESTAMP,
   generateSigningKey,
+  importSigningKeyFromBase64,
   signRequest,
   type AgentSigningKey,
 } from './_signing.js';
@@ -54,6 +55,7 @@ export interface AgentAuthOptions {
   accessToken?: string;
   refreshToken?: string;
   accessExpiresAt?: string;
+  signingPrivateKey?: string;
 }
 
 interface PollTaskOptions {
@@ -62,6 +64,7 @@ interface PollTaskOptions {
   agentId?: string;
   workerId?: string;
   waitSeconds?: number;
+  taskTypes?: string[];
   signal?: AbortSignal;
 }
 
@@ -96,7 +99,10 @@ export class Connection {
   }
 
   static async connect(options: ConnectionOptions = {}): Promise<Connection> {
-    const connection = new Connection({ ...options, baseUrl: options.baseUrl ?? 'http://127.0.0.1:4100' });
+    const connection = new Connection({
+      ...options,
+      baseUrl: options.baseUrl ?? process.env.POSTGRIP_AGENTORCHESTRATOR_URL ?? 'http://127.0.0.1:4100',
+    });
     await connection.health();
     return connection;
   }
@@ -111,6 +117,9 @@ export class Connection {
       ...this.agentAuth,
       ...Object.fromEntries(Object.entries(normalized).filter(([, value]) => value != null && value !== '')),
     };
+    if (normalized.signingPrivateKey) {
+      this.agentSigningKey = importSigningKeyFromBase64(normalized.signingPrivateKey);
+    }
   }
 
   async ensureAgentSession(options: AgentAuthOptions = {}): Promise<boolean> {
@@ -322,6 +331,9 @@ export class Connection {
       agent_id: agentId,
       wait_seconds: String(options.waitSeconds ?? 20),
     });
+    if (options.taskTypes?.length) {
+      query.set('task_types', options.taskTypes.join(','));
+    }
     await this.ensureAgentSession({ namespace: options.namespace ?? 'default', queue: options.queue, agentId });
     const response = await this.request<PollTaskResponse<P, R>>('GET', `/api/v1/agent/poll?${query.toString()}`, undefined, options.signal, { agentAuth: true });
     return response.task;
@@ -398,15 +410,19 @@ export class Connection {
   }
 
   private async request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal, options: { agentAuth?: boolean } = {}): Promise<T> {
+    const useAgentAuth = options.agentAuth === true || this.shouldUseAgentRuntimeAuth(path);
+    if (useAgentAuth) {
+      await this.ensureAgentSession();
+    }
     const headers = new Headers(this.headers);
-    if (options.agentAuth && this.agentAuth.accessToken) {
+    if (useAgentAuth && this.agentAuth.accessToken) {
       headers.set('Authorization', `Bearer ${this.agentAuth.accessToken}`);
     }
     if (body != null) {
       headers.set('Content-Type', 'application/json');
     }
     const bodyString = body == null ? '' : JSON.stringify(body);
-    if (options.agentAuth && this.agentSigningKey) {
+    if (useAgentAuth && this.agentSigningKey) {
       const queryStart = path.indexOf('?');
       const reqPath = queryStart === -1 ? path : path.slice(0, queryStart);
       const reqQuery = queryStart === -1 ? '' : path.slice(queryStart + 1);
@@ -436,6 +452,19 @@ export class Connection {
     } catch (err) {
       throw new Error(`postgrip-agent: ${method} ${path} -> ${response.status} (parse failed): ${text.slice(0, 200)}`);
     }
+  }
+
+  private shouldUseAgentRuntimeAuth(path: string): boolean {
+    if (!this.agentAuth.accessToken && !this.agentAuth.refreshToken) {
+      return false;
+    }
+    const queryStart = path.indexOf('?');
+    const reqPath = queryStart === -1 ? path : path.slice(0, queryStart);
+    return reqPath === '/api/v1/tasks'
+      || reqPath.startsWith('/api/v1/tasks/')
+      || reqPath === '/api/v1/workflows'
+      || reqPath.startsWith('/api/v1/workflows/')
+      || reqPath === '/api/v1/namespaces';
   }
 }
 

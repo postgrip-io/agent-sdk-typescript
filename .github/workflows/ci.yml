@@ -35,6 +35,8 @@ jobs:
       - name: fetch drift check from agent-sdk-protocol
         run: |
           mkdir -p tools
-          curl -fsSL https://raw.githubusercontent.com/postgrip-io/agent-sdk-protocol/main/tools/check_drift.py -o tools/check_drift.py
+          ref="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-main}}"
+          curl -fsSL "https://raw.githubusercontent.com/postgrip-io/agent-sdk-protocol/${ref}/tools/check_drift.py" -o tools/check_drift.py \
+            || curl -fsSL https://raw.githubusercontent.com/postgrip-io/agent-sdk-protocol/main/tools/check_drift.py -o tools/check_drift.py
       - name: check drift against agent-sdk-protocol and agent-sdk-python
-        run: python3 tools/check_drift.py --local ts --from-github
+        run: python3 tools/check_drift.py --local ts --from-github --github-ref "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-main}}"
