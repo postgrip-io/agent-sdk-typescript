@@ -245,12 +245,14 @@ export interface ContainerExecPayload {
 
 export interface WorkflowRuntimePayload {
   runtime_id?: string;
-  command: string;
+  image?: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
   working_dir?: string;
   namespace?: string;
   queue?: string;
+  pull_policy?: 'always' | 'missing' | 'never';
   timeout_seconds?: number;
 }
 
@@ -472,12 +474,14 @@ export interface ActivityInvocationPayload<Args extends unknown[] = unknown[]> {
 
 export interface WorkflowRuntimePayload {
   runtime_id?: string;
-  command: string;
+  image?: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
   working_dir?: string;
   namespace?: string;
   queue?: string;
+  pull_policy?: 'always' | 'missing' | 'never';
   timeout_seconds?: number;
 }
 

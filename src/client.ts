@@ -498,6 +498,7 @@ export class TaskClient {
       leaseTimeoutSeconds,
       ...payload
     } = input;
+    const isolatedRuntimeQueue = runtimeQueue ?? `postgrip-runtime-${crypto.randomUUID()}`;
     return this.enqueue({
       type: 'workflow.runtime',
       namespace,
@@ -506,7 +507,7 @@ export class TaskClient {
       payload: {
         ...payload,
         namespace: runtimeNamespace,
-        queue: runtimeQueue,
+        queue: isolatedRuntimeQueue,
       },
     });
   }

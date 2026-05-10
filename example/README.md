@@ -15,6 +15,7 @@ workflow function.
 ```sh
 export POSTGRIP_AGENT_LIVE_SERVER_URL=https://postgrip.app
 export POSTGRIP_AGENT_AUTH_TOKEN=...           # management-side bearer token
+export SDK_EXAMPLE_RUNTIME_IMAGE=oven/bun:1    # optional; runs via host agent helper
 export SDK_EXAMPLE_RUNTIME_ARGS_JSON='["-lc","bun run example/greeting.ts"]'
 bun run example/greeting.ts
 ```

@@ -144,6 +144,14 @@ function envAny(names: string[], fallback: string): string {
   return fallback;
 }
 
+function envOptional(names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  return undefined;
+}
+
 function readStringArrayJSON(name: string): string[] | undefined {
   const value = process.env[name];
   if (!value) return undefined;
@@ -165,7 +173,7 @@ async function submitManagedRuntime(): Promise<void> {
   const connection = await Connection.connect({ baseUrl, headers });
   const client = new Client({ connection });
   const queue = envAny(['POSTGRIP_EXAMPLE_RUNTIME_QUEUE', 'SDK_EXAMPLE_RUNTIME_QUEUE'], 'default');
-  const runtimeQueue = envAny(['POSTGRIP_EXAMPLE_RUNTIME_CHILD_QUEUE', 'SDK_EXAMPLE_RUNTIME_CHILD_QUEUE'], queue);
+  const runtimeQueue = envAny(['POSTGRIP_EXAMPLE_RUNTIME_CHILD_QUEUE', 'SDK_EXAMPLE_RUNTIME_CHILD_QUEUE'], `sdk-runtime-${slug(RUN_LABEL)}-${crypto.randomUUID().slice(0, 8)}`);
   const args = readStringArrayJSON('SDK_EXAMPLE_RUNTIME_ARGS_JSON')
     ?? readStringArrayJSON('POSTGRIP_EXAMPLE_RUNTIME_ARGS_JSON');
   if (!args) {
@@ -174,9 +182,11 @@ async function submitManagedRuntime(): Promise<void> {
   const task = await client.task.workflowRuntime({
     queue,
     runtimeQueue,
+    image: envOptional(['POSTGRIP_EXAMPLE_RUNTIME_IMAGE', 'SDK_EXAMPLE_RUNTIME_IMAGE']),
     command: envAny(['POSTGRIP_EXAMPLE_RUNTIME_COMMAND', 'SDK_EXAMPLE_RUNTIME_COMMAND'], 'sh'),
     args,
-    working_dir: envAny(['POSTGRIP_EXAMPLE_RUNTIME_WORKING_DIR', 'SDK_EXAMPLE_RUNTIME_WORKING_DIR'], ''),
+    working_dir: envOptional(['POSTGRIP_EXAMPLE_RUNTIME_WORKING_DIR', 'SDK_EXAMPLE_RUNTIME_WORKING_DIR']),
+    pull_policy: envOptional(['POSTGRIP_EXAMPLE_RUNTIME_PULL_POLICY', 'SDK_EXAMPLE_RUNTIME_PULL_POLICY']) as 'always' | 'missing' | 'never' | undefined,
     timeout_seconds: readPositiveIntegerAny(['POSTGRIP_EXAMPLE_RUNTIME_TIMEOUT_SECONDS', 'SDK_EXAMPLE_RUNTIME_TIMEOUT_SECONDS'], 900),
     leaseTimeoutSeconds: readPositiveIntegerAny(['POSTGRIP_EXAMPLE_RUNTIME_LEASE_TIMEOUT_SECONDS', 'SDK_EXAMPLE_RUNTIME_LEASE_TIMEOUT_SECONDS'], 30),
     env: {
