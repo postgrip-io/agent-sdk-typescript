@@ -21,6 +21,7 @@ import type {
   WorkflowExecutionDescription,
   WorkflowFunction,
   WorkflowHistoryEvent,
+  WorkflowRuntimePayload,
   WorkflowIdReusePolicy,
   WorkflowQueryDefinition,
   WorkflowQueryPayload,
@@ -453,6 +454,34 @@ export class TaskClient {
   async containerExec(input: { queue?: string } & ContainerExecPayload): Promise<Task<ContainerExecPayload>> {
     const { queue, ...payload } = input;
     return this.enqueue({ type: 'container.exec', queue, payload });
+  }
+
+  async workflowRuntime(input: {
+    namespace?: string;
+    queue?: string;
+    runtimeQueue?: string;
+    runtimeNamespace?: string;
+    leaseTimeoutSeconds?: number;
+  } & Omit<WorkflowRuntimePayload, 'queue' | 'namespace'>): Promise<Task<WorkflowRuntimePayload>> {
+    const {
+      namespace,
+      queue,
+      runtimeQueue,
+      runtimeNamespace,
+      leaseTimeoutSeconds,
+      ...payload
+    } = input;
+    return this.enqueue({
+      type: 'workflow.runtime',
+      namespace,
+      queue,
+      leaseTimeoutSeconds,
+      payload: {
+        ...payload,
+        namespace: runtimeNamespace,
+        queue: runtimeQueue,
+      },
+    });
   }
 
   async noop(queue?: string): Promise<Task> {

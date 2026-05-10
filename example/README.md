@@ -1,18 +1,21 @@
 # example/
 
 Runnable examples that exercise the PostGrip Agent TypeScript SDK end-to-end
-against a live runtime service.
+against a live runtime service. Running an example locally submits a managed
+`workflow.runtime` task to an existing agent pool. The SDK Agent path runs only
+when a PostGrip host agent launches the example and injects delegated runtime
+credentials.
 
 ## greeting
 
-A single-process demo: it starts an Agent that registers one activity and one
-workflow function, then enqueues a workflow execution from the same process
-and waits for the result.
+A managed-runtime demo: the local process submits the runtime command to an
+agent pool, and the host-launched runtime registers one activity and one
+workflow function.
 
 ```sh
 export POSTGRIP_AGENT_LIVE_SERVER_URL=https://postgrip.app
 export POSTGRIP_AGENT_AUTH_TOKEN=...           # management-side bearer token
-export POSTGRIP_AGENT_ENROLLMENT_KEY=...       # local standalone only
+export SDK_EXAMPLE_RUNTIME_ARGS_JSON='["-lc","bun run example/greeting.ts"]'
 bun run example/greeting.ts
 ```
 
@@ -23,8 +26,8 @@ Optional overrides:
 | `POSTGRIP_AGENT_TASK_QUEUE`    | `typescript-example`   |
 
 When a PostGrip host agent launches the example as a `workflow.runtime` task,
-it injects delegated session credentials. `POSTGRIP_AGENT_ENROLLMENT_KEY` is
-only for local standalone runs where no host agent is supervising the runtime.
+it injects delegated session credentials. The SDK does not enroll standalone
+agents.
 
 ## In-repo development
 

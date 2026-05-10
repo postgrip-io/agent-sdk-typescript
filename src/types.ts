@@ -243,6 +243,17 @@ export interface ContainerExecPayload {
   timeout_seconds?: number;
 }
 
+export interface WorkflowRuntimePayload {
+  runtime_id?: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  working_dir?: string;
+  namespace?: string;
+  queue?: string;
+  timeout_seconds?: number;
+}
+
 export type WorkflowFunction<Args extends unknown[] = unknown[], R = unknown> = (...args: Args) => Promise<R> | R;
 export type ActivityFunction<Args extends unknown[] = unknown[], R = unknown> = (...args: Args) => Promise<R> | R;
 export type WorkflowRegistry = Record<string, WorkflowFunction>;
