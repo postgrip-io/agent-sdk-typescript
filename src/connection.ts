@@ -27,6 +27,14 @@ import type {
   SignalWithStartWorkflowRequest,
   SignalWithStartWorkflowResponse,
 } from './types.js';
+import {
+  HEADER_AGENT_SIGNATURE,
+  HEADER_AGENT_SIGNATURE_KEY_ID,
+  HEADER_AGENT_SIGNATURE_TIMESTAMP,
+  generateSigningKey,
+  signRequest,
+  type AgentSigningKey,
+} from './_signing.js';
 
 export interface ConnectionOptions {
   baseUrl?: string;
@@ -75,6 +83,10 @@ export class Connection {
   private readonly headers: HeadersInit | undefined;
   private agentAuth: AgentAuthOptions = {};
   private agentSessionRefresh: Promise<void> | undefined;
+  // Ed25519 keypair the agent uses to sign requests to agent-authed
+  // endpoints. Generated lazily on first enroll and reused for the lifetime
+  // of the Connection.
+  private agentSigningKey: AgentSigningKey | undefined;
 
   private constructor(options: Required<Pick<ConnectionOptions, 'baseUrl'>> & Omit<ConnectionOptions, 'baseUrl'>) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
@@ -361,6 +373,9 @@ export class Connection {
     if (!this.agentAuth.enrollmentKey) {
       return;
     }
+    if (!this.agentSigningKey) {
+      this.agentSigningKey = generateSigningKey();
+    }
     const session = await this.request<AgentSessionResponse>('POST', '/api/v1/agent/enroll', {
       enrollmentKey: this.agentAuth.enrollmentKey,
       agentId: this.agentAuth.agentId,
@@ -368,6 +383,7 @@ export class Connection {
       host: this.agentAuth.host,
       namespaces: [this.agentAuth.namespace ?? 'default'],
       queues: [this.agentAuth.queue ?? 'default'],
+      signaturePublicKey: this.agentSigningKey.publicKeyBase64,
     });
     this.applyAgentSession(session);
   }
@@ -389,17 +405,37 @@ export class Connection {
     if (body != null) {
       headers.set('Content-Type', 'application/json');
     }
+    const bodyString = body == null ? '' : JSON.stringify(body);
+    if (options.agentAuth && this.agentSigningKey) {
+      const queryStart = path.indexOf('?');
+      const reqPath = queryStart === -1 ? path : path.slice(0, queryStart);
+      const reqQuery = queryStart === -1 ? '' : path.slice(queryStart + 1);
+      const ts = Math.floor(Date.now() / 1000);
+      headers.set(HEADER_AGENT_SIGNATURE_TIMESTAMP, String(ts));
+      headers.set(HEADER_AGENT_SIGNATURE_KEY_ID, this.agentSigningKey.keyId);
+      headers.set(HEADER_AGENT_SIGNATURE, signRequest(
+        this.agentSigningKey.privateKey, method, reqPath, reqQuery, ts, Buffer.from(bodyString),
+      ));
+    }
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       signal,
       headers,
-      body: body == null ? undefined : JSON.stringify(body),
+      body: body == null ? undefined : bodyString,
     });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({ error: response.statusText }));
       throw new Error(typeof payload.error === 'string' ? payload.error : response.statusText);
     }
-    return response.json() as Promise<T>;
+    const text = await response.text();
+    if (text === '') {
+      return undefined as T;
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch (err) {
+      throw new Error(`postgrip-agent: ${method} ${path} -> ${response.status} (parse failed): ${text.slice(0, 200)}`);
+    }
   }
 }
 
