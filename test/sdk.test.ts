@@ -281,6 +281,12 @@ describe('PostGrip Agent TypeScript Client', () => {
       namespace: 'tenant-a',
       args: ['PostGrip'],
       memo: { owner: 'docs' },
+      ui: {
+        displayName: 'Example greeting',
+        description: 'Started from the SDK test',
+        details: { customer: 'acme', attempt: 1 },
+        tags: ['sdk', 'demo'],
+      },
       searchAttributes: { customer: 'acme' },
       retry: { maximumAttempts: 3, nonRetryableErrorTypes: ['BadInput'] },
       leaseTimeoutSeconds: 12,
@@ -298,7 +304,15 @@ describe('PostGrip Agent TypeScript Client', () => {
       workflowId: 'workflow-1',
       workflowType: 'ExampleWorkflow',
       args: ['PostGrip'],
-      memo: { owner: 'docs' },
+      memo: {
+        owner: 'docs',
+        'postgrip.ui': {
+          displayName: 'Example greeting',
+          description: 'Started from the SDK test',
+          details: { customer: 'acme', attempt: 1 },
+          tags: ['sdk', 'demo'],
+        },
+      },
       searchAttributes: { customer: 'acme' },
       retry: { maximumAttempts: 3, nonRetryableErrorTypes: ['BadInput'] },
     });
@@ -381,6 +395,10 @@ describe('PostGrip Agent TypeScript Client', () => {
       missedRunPolicy: 'skip',
       workflowId: 'scheduled-workflow',
       overlapPolicy: 'skip',
+      ui: {
+        displayName: 'Nightly scheduled workflow',
+        details: { owner: 'ops' },
+      },
     });
 
     expect(createSchedule).toHaveBeenCalledWith(expect.objectContaining({
@@ -399,6 +417,12 @@ describe('PostGrip Agent TypeScript Client', () => {
         queue: 'scheduled',
         workflowType: 'ScheduledWorkflow',
         workflowId: 'scheduled-workflow',
+        memo: {
+          'postgrip.ui': {
+            displayName: 'Nightly scheduled workflow',
+            details: { owner: 'ops' },
+          },
+        },
       }),
     }));
   });

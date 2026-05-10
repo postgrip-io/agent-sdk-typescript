@@ -68,12 +68,20 @@ const resultPromise = client.workflow.execute(greetingWorkflow, {
   workflowRunTimeoutMs: 60_000,
   retry: { maximumAttempts: 3, initialIntervalMs: 1_000 },
   memo: { displayName: 'Greeting' },
+  ui: {
+    displayName: 'Greeting for PostGrip',
+    description: 'Shown on the PostGrip Agents activity tab.',
+    details: { customerId: 'cust-1', sdk: 'typescript' },
+    tags: ['demo'],
+  },
   searchAttributes: { customerId: 'cust-1' },
 });
 
 await agent.runUntil(resultPromise);
 console.log(await resultPromise);
 ```
+
+`ui` is SDK-owned console metadata. It is persisted inside workflow memo as `postgrip.ui`, so the Agents activity tab can show a friendly label, description, details, and tags while `memo` remains available for your own data.
 
 Submit that runtime to an existing agent pool from your client process:
 

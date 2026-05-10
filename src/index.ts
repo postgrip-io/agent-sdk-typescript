@@ -89,6 +89,7 @@ export type {
   SignalWithStartWorkflowResponse,
   WorkflowSignalDefinition,
   WorkflowStartOptions,
+  WorkflowUIMetadata,
   WorkflowUpdateDefinition,
   WorkflowUpdatePayload,
 } from './types.js';

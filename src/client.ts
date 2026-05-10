@@ -30,6 +30,7 @@ import type {
   WorkflowUpdatePayload,
   WorkflowPayload,
   WorkflowStartOptions,
+  WorkflowUIMetadata,
 } from './types.js';
 
 export interface ClientOptions {
@@ -39,6 +40,32 @@ export interface ClientOptions {
 export interface WatchEventsOptions {
   pollIntervalMs?: number;
   signal?: AbortSignal;
+}
+
+const POSTGRIP_UI_MEMO_KEY = 'postgrip.ui';
+
+function memoWithWorkflowUI(
+  memo?: Record<string, unknown>,
+  ui?: WorkflowUIMetadata,
+): Record<string, unknown> | undefined {
+  if (!ui) return memo;
+  const cleanUI: WorkflowUIMetadata = {};
+  if (ui.displayName?.trim()) cleanUI.displayName = ui.displayName.trim();
+  if (ui.description?.trim()) cleanUI.description = ui.description.trim();
+  if (ui.tags?.length) {
+    const tags = ui.tags.map((tag) => tag.trim()).filter(Boolean);
+    if (tags.length) cleanUI.tags = tags;
+  }
+  if (ui.details) {
+    const details = Object.fromEntries(
+      Object.entries(ui.details)
+        .map(([key, value]) => [key.trim(), value] as const)
+        .filter(([key]) => key !== ''),
+    );
+    if (Object.keys(details).length > 0) cleanUI.details = details;
+  }
+  if (Object.keys(cleanUI).length === 0) return memo;
+  return { ...(memo ?? {}), [POSTGRIP_UI_MEMO_KEY]: cleanUI };
 }
 
 export class Client {
@@ -77,7 +104,7 @@ export class WorkflowClient {
         workflowIdReusePolicy: options.workflowIdReusePolicy,
         runTimeoutMs: options.workflowRunTimeoutMs,
         retry: options.retry,
-        memo: options.memo,
+        memo: memoWithWorkflowUI(options.memo, options.ui),
         searchAttributes: options.searchAttributes,
         args: options.args ?? ([] as unknown as Parameters<WF>),
       },
@@ -117,7 +144,7 @@ export class WorkflowClient {
       lease_timeout_seconds: options.leaseTimeoutSeconds,
       runTimeoutMs: options.workflowRunTimeoutMs,
       retry: options.retry,
-      memo: options.memo,
+      memo: memoWithWorkflowUI(options.memo, options.ui),
       searchAttributes: options.searchAttributes,
       args: options.args ?? ([] as unknown as Parameters<WF>),
       signal: {
@@ -531,6 +558,7 @@ export class ScheduleClient {
     retry?: RetryPolicy;
     memo?: Record<string, unknown>;
     searchAttributes?: Record<string, unknown>;
+    ui?: WorkflowUIMetadata;
   }): Promise<Schedule<Parameters<WF>>> {
     const workflowType = typeof input.workflow === 'string' ? input.workflow : input.workflow.name;
     if (!workflowType) {
@@ -558,7 +586,7 @@ export class ScheduleClient {
         workflowIdReusePolicy: input.workflowIdReusePolicy,
         runTimeoutMs: input.workflowRunTimeoutMs,
         retry: input.retry,
-        memo: input.memo,
+        memo: memoWithWorkflowUI(input.memo, input.ui),
         searchAttributes: input.searchAttributes,
         args: input.args,
       },
