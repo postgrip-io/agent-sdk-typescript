@@ -86,6 +86,12 @@ async function main(): Promise<void> {
       workflowId,
       taskQueue,
       args: [process.env.SDK_EXAMPLE_GREETING_NAME ?? 'PostGrip'],
+      ui: {
+        displayName: 'TypeScript greeting example',
+        description: 'Started from the TypeScript SDK greeting example.',
+        details: { sdk: 'typescript' },
+        tags: ['sdk-ui-demo', 'typescript'],
+      },
       timeoutMs: 60_000,
     }),
   );

@@ -95,6 +95,16 @@ async function main(): Promise<void> {
         workflowId,
         taskQueue,
         args: [`${RUN_LABEL}-${i}`, STEPS_PER_WORKFLOW],
+        ui: {
+          displayName: `${RUN_LABEL} long run #${i}`,
+          description: `Runs ${STEPS_PER_WORKFLOW} steps with ${STEP_SLEEP_MS / 1000}s sleeps between steps.`,
+          details: {
+            sdk: 'typescript',
+            steps: STEPS_PER_WORKFLOW,
+            sleepSeconds: STEP_SLEEP_MS / 1000,
+          },
+          tags: ['sdk-ui-demo', 'typescript'],
+        },
         timeoutMs: WORKFLOW_TIMEOUT_MS,
       });
       console.log(`[${i}/${WORKFLOW_RUNS}] ${workflowId} -> ${JSON.stringify(result)} (${Math.round((Date.now() - runStart) / 1000)}s)`);

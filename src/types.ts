@@ -272,9 +272,17 @@ export interface WorkflowStartOptions<Args extends unknown[] = unknown[]> {
   retry?: RetryPolicy;
   memo?: Record<string, unknown>;
   searchAttributes?: Record<string, unknown>;
+  ui?: WorkflowUIMetadata;
 }
 
 export type WorkflowIdReusePolicy = 'allow_duplicate' | 'allow_duplicate_failed_only' | 'reject_duplicate';
+
+export interface WorkflowUIMetadata {
+  displayName?: string;
+  description?: string;
+  details?: Record<string, string | number | boolean>;
+  tags?: string[];
+}
 
 export interface ContinueAsNewOptions<Args extends unknown[] = unknown[]> {
   workflowId?: string;
