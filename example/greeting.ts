@@ -118,13 +118,16 @@ async function submitManagedRuntime(): Promise<void> {
     throw new Error('SDK_EXAMPLE_RUNTIME_ARGS_JSON is required and must be a JSON array of strings');
   }
   const queue = process.env.SDK_EXAMPLE_RUNTIME_QUEUE ?? process.env.POSTGRIP_EXAMPLE_RUNTIME_QUEUE ?? 'default';
-  const runtimeQueue = process.env.SDK_EXAMPLE_RUNTIME_CHILD_QUEUE ?? process.env.POSTGRIP_EXAMPLE_RUNTIME_CHILD_QUEUE ?? queue;
+  const runtimeQueue = process.env.SDK_EXAMPLE_RUNTIME_CHILD_QUEUE ?? process.env.POSTGRIP_EXAMPLE_RUNTIME_CHILD_QUEUE ?? `postgrip-greeting-${crypto.randomUUID().slice(0, 8)}`;
+  const pullPolicy = (process.env.SDK_EXAMPLE_RUNTIME_PULL_POLICY ?? process.env.POSTGRIP_EXAMPLE_RUNTIME_PULL_POLICY) as 'always' | 'missing' | 'never' | undefined;
   const task = await client.task.workflowRuntime({
     queue,
     runtimeQueue,
+    image: process.env.SDK_EXAMPLE_RUNTIME_IMAGE ?? process.env.POSTGRIP_EXAMPLE_RUNTIME_IMAGE,
     command: process.env.SDK_EXAMPLE_RUNTIME_COMMAND ?? process.env.POSTGRIP_EXAMPLE_RUNTIME_COMMAND ?? 'sh',
     args,
     working_dir: process.env.SDK_EXAMPLE_RUNTIME_WORKING_DIR ?? process.env.POSTGRIP_EXAMPLE_RUNTIME_WORKING_DIR,
+    pull_policy: pullPolicy,
     timeout_seconds: 300,
     leaseTimeoutSeconds: 30,
     env: {

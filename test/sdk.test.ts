@@ -5,7 +5,7 @@ import { Agent } from '../src/agent';
 import { Worker as IndexWorker } from '../src/index';
 import { Worker as ModuleWorker } from '../src/worker';
 import { defineQuery } from '../src/workflow';
-import type { EnqueueTaskRequest, Task, WorkflowExecution } from '../src/types';
+import type { EnqueueTaskRequest, Task, WorkflowExecution, WorkflowRuntimePayload } from '../src/types';
 
 function workflowTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -251,6 +251,8 @@ describe('PostGrip Agent TypeScript Connection', () => {
 
     expect(task.id).toBe('runtime-task');
     expect(seenBody?.type).toBe('workflow.runtime');
+    expect((seenBody?.payload as WorkflowRuntimePayload | undefined)?.queue).toMatch(/^postgrip-runtime-/);
+    expect((seenBody?.payload as WorkflowRuntimePayload | undefined)?.queue).not.toBe('default');
   });
 });
 

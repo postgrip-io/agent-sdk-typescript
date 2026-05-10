@@ -129,7 +129,10 @@ export class Agent {
         });
       } catch (err) {
         if (options.signal?.aborted) return;
-        throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`postgrip-agent: poll failed: ${message}`);
+        await delay(this.pollIntervalMs, options.signal);
+        continue;
       }
       if (options.signal?.aborted) return;
       if (!task) {
