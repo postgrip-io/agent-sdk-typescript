@@ -13,12 +13,13 @@ agent pool, and the host-launched runtime registers one activity and one
 workflow function.
 
 ```sh
-export POSTGRIP_AGENT_LIVE_SERVER_URL=https://postgrip.app
-export POSTGRIP_AGENT_AUTH_TOKEN=...           # management-side bearer token
-export SDK_EXAMPLE_RUNTIME_IMAGE=oven/bun:1    # optional; runs via host agent helper
-export SDK_EXAMPLE_RUNTIME_ARGS_JSON='["-lc","bun run example/greeting.ts"]'
+cp example/.env.example .env
+# edit .env and set POSTGRIP_AGENT_TOKEN to your Agent token
 bun run example/greeting.ts
 ```
+
+The generated `.env` file is ignored by git. The committed
+`example/.env.example` contains placeholders only.
 
 Optional overrides:
 

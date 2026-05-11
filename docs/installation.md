@@ -21,7 +21,7 @@ npm install @postgrip/agent@0.1.0
 ## Requirements
 
 - **Node.js 20 or newer** (or Bun ≥ 1.0). The SDK is published as ESM only — `"type": "module"` in `package.json`.
-- A reachable PostGrip Agent runtime service. The default address is `http://127.0.0.1:4100`.
+- A reachable PostGrip Agent runtime service. The default address is `https://agentorchestrator.postgrip.app`.
 
 ## Importing
 
@@ -98,8 +98,9 @@ import { Connection } from '@postgrip/agent';
 
 const connection = await Connection.connect({
   baseUrl: 'http://127.0.0.1:4100',
-  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_AUTH_TOKEN}` },
+  // Agent token from Settings > Organization > Agent tokens.
+  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_TOKEN}` },
 });
 ```
 
-`Connection.connect` returns a Promise; await it at the top of your async entry point.
+`Connection.connect` defaults to PostGrip Cloud if `baseUrl` is omitted. For local or self-hosted development, pass `baseUrl` explicitly as shown above or set `POSTGRIP_AGENTORCHESTRATOR_URL`.

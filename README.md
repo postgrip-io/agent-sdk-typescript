@@ -46,9 +46,7 @@ export async function greetingWorkflow(name: string): Promise<string> {
   return greet(name);
 }
 
-const connection = await Connection.connect({
-  baseUrl: 'http://127.0.0.1:4100',
-});
+const connection = await Connection.connect();
 const agent = await Agent.create({
   connection,
   namespace: 'default',
@@ -90,8 +88,8 @@ Submit that runtime to an existing agent pool from your client process:
 import { Client, Connection } from '@postgrip/agent';
 
 const connection = await Connection.connect({
-  baseUrl: 'https://agentorchestrator.postgrip.app',
-  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_AUTH_TOKEN}` },
+  // Agent token from Settings > Organization > Agent tokens.
+  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_TOKEN}` },
 });
 const client = new Client({ connection });
 
@@ -112,7 +110,7 @@ Inside a managed runtime, the workflow client can inspect and interact with work
 import { Client, Connection } from '@postgrip/agent';
 
 const client = new Client({
-  connection: await Connection.connect({ baseUrl: 'http://127.0.0.1:4100' }),
+  connection: await Connection.connect(),
 });
 
 const handle = client.workflow.getHandle<string>('greeting-workflow-id');

@@ -7,9 +7,8 @@
 //
 // Run:
 //
-//   export POSTGRIP_AGENTORCHESTRATOR_URL=https://agentorchestrator.postgrip.app
-//   export POSTGRIP_AGENT_AUTH_TOKEN=...
-//   export SDK_EXAMPLE_RUNTIME_ARGS_JSON='["-lc","bun run example/longrun.ts"]'
+//   cp example/.env.example .env
+//   # edit .env and set POSTGRIP_AGENT_TOKEN to your Agent token
 //   bun run example/longrun.ts
 //
 // The SDK does not enroll standalone agents; host agents inject delegated
@@ -25,12 +24,21 @@ import {
   type ActivityRegistry,
   type WorkflowRegistry,
 } from '@postgrip/agent';
+import { loadExampleEnv } from './env';
+
+loadExampleEnv(import.meta.url);
 
 const STEPS_PER_WORKFLOW = readPositiveIntegerAny(['POSTGRIP_EXAMPLE_STEPS', 'SDK_EXAMPLE_STEPS'], 5);
 const WORKFLOW_RUNS = readPositiveIntegerAny(['POSTGRIP_EXAMPLE_WORKFLOW_RUNS', 'SDK_EXAMPLE_WORKFLOW_RUNS'], 5);
 const STEP_SLEEP_MS = readPositiveIntegerAny(['POSTGRIP_EXAMPLE_STEP_SLEEP_SECONDS', 'SDK_EXAMPLE_STEP_SLEEP_SECONDS'], 13) * 1000;
 const WORKFLOW_TIMEOUT_MS = readPositiveIntegerAny(['POSTGRIP_EXAMPLE_WORKFLOW_TIMEOUT_SECONDS', 'SDK_EXAMPLE_WORKFLOW_TIMEOUT_SECONDS'], 5 * 60) * 1000;
 const RUN_LABEL = envAny(['POSTGRIP_EXAMPLE_RUN_LABEL', 'SDK_EXAMPLE_RUN_LABEL'], 'PostGrip');
+const DEFAULT_RUNTIME_IMAGE = 'oven/bun:1';
+const DEFAULT_RUNTIME_COMMAND = 'sh';
+const DEFAULT_RUNTIME_ARGS = [
+  '-lc',
+  'apt-get update >/dev/null && apt-get install -y git >/dev/null && git clone --depth 1 https://github.com/postgrip-io/agent-sdk-typescript /tmp/agent-sdk-typescript && cd /tmp/agent-sdk-typescript && bun install --frozen-lockfile && bun run build && bun run example/longrun.ts',
+];
 
 const activities = {
   async processStep(name: string, step: number): Promise<string> {
@@ -66,17 +74,12 @@ async function main(): Promise<void> {
   }
 
   const baseUrl = process.env.POSTGRIP_AGENTORCHESTRATOR_URL ?? process.env.POSTGRIP_AGENT_LIVE_SERVER_URL ?? 'https://agentorchestrator.postgrip.app';
-  const authToken = process.env.POSTGRIP_AGENT_AUTH_TOKEN ?? '';
-  const tenantId = process.env.POSTGRIP_AGENT_TENANT_ID ?? '';
   const taskQueue = process.env.POSTGRIP_AGENT_TASK_QUEUE ?? 'typescript-longrun';
   const agentId = process.env.POSTGRIP_AGENT_ID ?? 'typescript-longrun-agent';
-  const headers: Record<string, string> = {};
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  if (tenantId) headers['x-postgrip-agent-tenant-id'] = tenantId;
 
   const connection = await Connection.connect({
     baseUrl,
-    headers,
+    headers: agentTokenHeaders(),
   });
 
   const agent = await Agent.create({
@@ -170,26 +173,18 @@ function readStringArrayJSON(name: string): string[] | undefined {
 
 async function submitManagedRuntime(): Promise<void> {
   const baseUrl = process.env.POSTGRIP_AGENTORCHESTRATOR_URL ?? process.env.POSTGRIP_AGENT_LIVE_SERVER_URL ?? 'https://agentorchestrator.postgrip.app';
-  const authToken = process.env.POSTGRIP_AGENT_AUTH_TOKEN ?? '';
-  const tenantId = process.env.POSTGRIP_AGENT_TENANT_ID ?? '';
-  const headers: Record<string, string> = {};
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  if (tenantId) headers['x-postgrip-agent-tenant-id'] = tenantId;
-
-  const connection = await Connection.connect({ baseUrl, headers });
+  const connection = await Connection.connect({ baseUrl, headers: agentTokenHeaders() });
   const client = new Client({ connection });
   const queue = envAny(['POSTGRIP_EXAMPLE_RUNTIME_QUEUE', 'SDK_EXAMPLE_RUNTIME_QUEUE'], 'default');
   const runtimeQueue = envAny(['POSTGRIP_EXAMPLE_RUNTIME_CHILD_QUEUE', 'SDK_EXAMPLE_RUNTIME_CHILD_QUEUE'], `sdk-runtime-${slug(RUN_LABEL)}-${crypto.randomUUID().slice(0, 8)}`);
   const args = readStringArrayJSON('SDK_EXAMPLE_RUNTIME_ARGS_JSON')
-    ?? readStringArrayJSON('POSTGRIP_EXAMPLE_RUNTIME_ARGS_JSON');
-  if (!args) {
-    throw new Error('SDK_EXAMPLE_RUNTIME_ARGS_JSON is required to submit this runtime to an agent pool');
-  }
+    ?? readStringArrayJSON('POSTGRIP_EXAMPLE_RUNTIME_ARGS_JSON')
+    ?? DEFAULT_RUNTIME_ARGS;
   const task = await client.task.workflowRuntime({
     queue,
     runtimeQueue,
-    image: envOptional(['POSTGRIP_EXAMPLE_RUNTIME_IMAGE', 'SDK_EXAMPLE_RUNTIME_IMAGE']),
-    command: envAny(['POSTGRIP_EXAMPLE_RUNTIME_COMMAND', 'SDK_EXAMPLE_RUNTIME_COMMAND'], 'sh'),
+    image: envAny(['POSTGRIP_EXAMPLE_RUNTIME_IMAGE', 'SDK_EXAMPLE_RUNTIME_IMAGE'], DEFAULT_RUNTIME_IMAGE),
+    command: envAny(['POSTGRIP_EXAMPLE_RUNTIME_COMMAND', 'SDK_EXAMPLE_RUNTIME_COMMAND'], DEFAULT_RUNTIME_COMMAND),
     args,
     working_dir: envOptional(['POSTGRIP_EXAMPLE_RUNTIME_WORKING_DIR', 'SDK_EXAMPLE_RUNTIME_WORKING_DIR']),
     pull_policy: envOptional(['POSTGRIP_EXAMPLE_RUNTIME_PULL_POLICY', 'SDK_EXAMPLE_RUNTIME_PULL_POLICY']) as 'always' | 'missing' | 'never' | undefined,
@@ -208,4 +203,9 @@ async function submitManagedRuntime(): Promise<void> {
 
 function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'run';
+}
+
+function agentTokenHeaders(): Record<string, string> {
+  const authToken = process.env.POSTGRIP_AGENT_TOKEN ?? process.env.POSTGRIP_AGENT_MANAGEMENT_TOKEN ?? '';
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
 }
