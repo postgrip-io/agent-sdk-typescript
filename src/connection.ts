@@ -56,6 +56,8 @@ export interface AgentAuthOptions {
   signingPrivateKey?: string;
 }
 
+export const DEFAULT_BASE_URL = 'https://agentorchestrator.postgrip.app';
+
 interface PollTaskOptions {
   namespace?: string;
   queue: string;
@@ -97,7 +99,7 @@ export class Connection {
   static async connect(options: ConnectionOptions = {}): Promise<Connection> {
     const connection = new Connection({
       ...options,
-      baseUrl: options.baseUrl ?? process.env.POSTGRIP_AGENTORCHESTRATOR_URL ?? 'http://127.0.0.1:4100',
+      baseUrl: options.baseUrl ?? process.env.POSTGRIP_AGENTORCHESTRATOR_URL ?? DEFAULT_BASE_URL,
     });
     await connection.health();
     return connection;

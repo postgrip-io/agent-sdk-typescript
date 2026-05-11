@@ -10,8 +10,8 @@ A program that just hands work to the runtime service needs only `Client` + `Con
 import { Client, Connection } from '@postgrip/agent';
 
 const connection = await Connection.connect({
-  baseUrl: 'http://127.0.0.1:4100',
-  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_AUTH_TOKEN}` },
+  // Agent token from Settings > Organization > Agent tokens.
+  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_TOKEN}` },
 });
 
 const client = new Client({ connection });
@@ -87,8 +87,8 @@ export async function greetingWorkflow(name: string): Promise<string> {
 }
 
 const connection = await Connection.connect({
-  baseUrl: 'http://127.0.0.1:4100',
-  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_AUTH_TOKEN}` },
+  // Agent token from Settings > Organization > Agent tokens.
+  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_TOKEN}` },
 });
 
 const agent = await Agent.create({
