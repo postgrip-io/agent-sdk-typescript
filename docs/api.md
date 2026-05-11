@@ -37,6 +37,8 @@ Public surface re-exported from `@postgrip/agent`. Customer code should import e
 | `activityInfo()`                                                           | Task id, activity type.                                  |
 | `await heartbeat(details?)`                                                | Heartbeat the activity. Throws `CancelledFailure` if the runtime requested cancellation. |
 | `await activityMilestone(name, options)`                                   | Emit a milestone event for the activity task. (Re-export of `activity.ts`'s `milestone`, renamed to avoid clash with the workflow-side `milestone`.) |
+| `await activityStdout(data, options?)`                                     | Emit stdout output for the current activity task.        |
+| `await activityStderr(data, options?)`                                     | Emit stderr output for the current activity task.        |
 
 ## Errors
 

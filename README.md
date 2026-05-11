@@ -260,13 +260,14 @@ const activities = {
       imported += row.length;
       await heartbeat({ imported });
       await activityMilestone('import row', { index: index + 1, total: rows.length });
+      await activityStdout(`imported row ${index + 1}\n`, { stage: 'importRows' });
     }
     return imported;
   },
 };
 ```
 
-Use milestones for ordered steps. A 10-step activity should emit one milestone per completed step; clients can call `handle.watchEvents()` or `client.task.watchEvents(taskId)` and render `kind === 'milestone'` events as a checklist.
+Use milestones for ordered steps. A 10-step activity should emit one milestone per completed step; clients can call `handle.watchEvents()` or `client.task.watchEvents(taskId)` and render `kind === 'milestone'` events as a checklist. Use `activityStdout` and `activityStderr` to attach output to the current activity task for the console Activity detail view.
 
 `startToCloseTimeoutMs` is durable. It is encoded as the activity task lease timeout and recorded in `ActivityTaskScheduled` with retry policy metadata. The agent renews activity leases while execution is in progress. If a leased activity misses its deadline, the agent runtime service records `ActivityTaskTimedOut`, fails the activity task, and wakes the blocked workflow task for replay.
 

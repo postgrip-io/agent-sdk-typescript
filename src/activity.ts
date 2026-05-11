@@ -1,13 +1,15 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import { CancelledFailure } from './errors.js';
 
 interface ActivityRuntime {
   taskId: string;
   activityType: string;
   heartbeat: (details?: Record<string, unknown>) => Promise<void>;
-  emit: (event: { kind: 'milestone' | 'progress'; stage?: string; message?: string; details?: Record<string, unknown> }) => Promise<void>;
+  emit: (event: ActivityEventInput) => Promise<void>;
 }
 
-const activityRuntimeStack: ActivityRuntime[] = [];
+const activityRuntimeStorage = new AsyncLocalStorage<ActivityRuntime>();
 
 export interface ActivityInfo {
   taskId: string;
@@ -18,6 +20,21 @@ export interface MilestoneOptions {
   index?: number;
   total?: number;
   status?: 'started' | 'completed' | 'failed' | 'skipped';
+  details?: Record<string, unknown>;
+}
+
+export interface ActivityOutputOptions {
+  stage?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface ActivityEventInput {
+  kind: 'milestone' | 'progress' | 'stdout' | 'stderr';
+  stage?: string;
+  message?: string;
+  stream?: 'stdout' | 'stderr';
+  data?: string;
   details?: Record<string, unknown>;
 }
 
@@ -58,13 +75,27 @@ export async function milestone(name: string, options: MilestoneOptions = {}): P
   });
 }
 
+export async function stdout(data: string, options: ActivityOutputOptions = {}): Promise<void> {
+  await emitOutput('stdout', data, options);
+}
+
+export async function stderr(data: string, options: ActivityOutputOptions = {}): Promise<void> {
+  await emitOutput('stderr', data, options);
+}
+
 export async function runInActivityRuntime<R>(runtime: ActivityRuntime, fn: () => Promise<R> | R): Promise<R> {
-  activityRuntimeStack.push(runtime);
-  try {
-    return await fn();
-  } finally {
-    activityRuntimeStack.pop();
-  }
+  return activityRuntimeStorage.run(runtime, async () => fn());
+}
+
+async function emitOutput(stream: 'stdout' | 'stderr', data: string, options: ActivityOutputOptions): Promise<void> {
+  await currentActivityRuntime().emit({
+    kind: stream,
+    stage: options.stage ?? 'activity',
+    message: options.message,
+    stream,
+    data,
+    details: options.details,
+  });
 }
 
 function milestoneMessage(name: string, options: MilestoneOptions): string {
@@ -76,7 +107,7 @@ function milestoneMessage(name: string, options: MilestoneOptions): string {
 }
 
 function currentActivityRuntime(): ActivityRuntime {
-  const runtime = activityRuntimeStack[activityRuntimeStack.length - 1];
+  const runtime = activityRuntimeStorage.getStore();
   if (!runtime) {
     throw new Error('activity API called outside of a PostGrip activity runtime');
   }

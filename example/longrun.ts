@@ -17,6 +17,7 @@
 
 import {
   Agent,
+  activityStdout,
   Client,
   Connection,
   proxyActivities,
@@ -33,7 +34,12 @@ const RUN_LABEL = envAny(['POSTGRIP_EXAMPLE_RUN_LABEL', 'SDK_EXAMPLE_RUN_LABEL']
 
 const activities = {
   async processStep(name: string, step: number): Promise<string> {
-    return `processed step ${step} for ${name}`;
+    const result = `processed step ${step} for ${name}`;
+    await activityStdout(`${result}\n`, {
+      stage: 'processStep',
+      details: { step, name },
+    });
+    return result;
   },
 };
 

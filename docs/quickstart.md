@@ -66,8 +66,8 @@ import {
 } from '@postgrip/agent';
 
 // Activities are plain async functions. Inside the body, activity helpers
-// (heartbeat, activityMilestone, activityInfo) work via the per-task
-// runtime the agent attaches.
+// (heartbeat, activityMilestone, activityStdout, activityInfo) work via
+// the per-task runtime the agent attaches.
 const activities = {
   async greet(name: string): Promise<string> {
     return `Hello, ${name}`;

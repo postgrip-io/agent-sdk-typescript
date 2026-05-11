@@ -1,5 +1,11 @@
-export { activityInfo, heartbeat, milestone as activityMilestone } from './activity.js';
-export type { ActivityInfo, MilestoneOptions } from './activity.js';
+export {
+  activityInfo,
+  heartbeat,
+  milestone as activityMilestone,
+  stderr as activityStderr,
+  stdout as activityStdout,
+} from './activity.js';
+export type { ActivityEventInput, ActivityInfo, ActivityOutputOptions, MilestoneOptions } from './activity.js';
 export { Client, ScheduleClient, TaskClient, WorkflowClient, WorkflowHandle, WorkflowUpdateHandle } from './client.js';
 export { Connection } from './connection.js';
 export type { ConnectionOptions } from './connection.js';
