@@ -1,10 +1,14 @@
 # Quick start
 
-Two examples: enqueueing a task as a client, and running an agent that registers a workflow + activities.
+Two pieces make up the normal SDK flow: a client submits a managed
+`workflow.runtime` task to an existing PostGrip agent pool, and that managed
+runtime registers workflow and activity functions.
 
-## Enqueue a task
+## Submit a workflow runtime
 
-A program that just hands work to the runtime service needs only `Client` + `Connection`.
+A client process uses an Agent token from Settings > Organization > Agent tokens
+and submits a `workflow.runtime` task. The host PostGrip agent launches the
+runtime process and injects delegated credentials.
 
 ```ts
 import { Client, Connection } from '@postgrip/agent';
@@ -16,46 +20,26 @@ const connection = await Connection.connect({
 
 const client = new Client({ connection });
 
-// shell.exec — runs whatever's on the agent's PATH.
-const task = await client.task.shellExec({
+const task = await client.task.workflowRuntime({
   queue: 'default',
-  command: 'echo',
-  args: ['hello from agent'],
-});
-console.log('enqueued', task.id);
-
-// container.exec — runs in a per-task container the agent launches via its
-// docker CLI. Polyglot without bloating the agent image.
-await client.task.containerExec({
-  queue: 'default',
-  image: 'node:22-alpine',
   command: 'node',
-  args: ['-e', "console.log('hi from node')"],
-  pullPolicy: 'missing',
-  timeoutSeconds: 60,
+  args: ['dist/workflow-runtime.js'],
+  runtimeQueue: 'default',
+  env: {
+    NODE_ENV: 'production',
+  },
 });
+console.log('submitted workflow runtime', task.id);
 ```
 
 !!! note
-    `container.exec` requires the agent process to have `DOCKER_HOST` set so the container runs through the worker stack's docker socket proxy. Containers run with `--rm --network=none`, no host volume mounts, and the same env-key allowlist as `shell.exec`.
+    The SDK does not enroll standalone PostGrip agents. It submits workflow runtimes to agent pools that are already enrolled in PostGrip.
 
-## Inspect or stream task events
+## Run a managed workflow runtime worker
 
-`TaskClient` doesn't expose a single "wait for result" call for raw tasks — terminal results are workflow-shaped. To watch a `shell.exec` / `container.exec` task progress, stream its event log:
-
-```ts
-for await (const event of client.task.watchEvents(task.id)) {
-  console.log(event.kind, event.message);
-}
-```
-
-The async iterator closes when the task reaches a terminal state. For a one-shot snapshot of the events so far, use `client.task.events(task.id)` instead.
-
-The "wait for terminal state and unwrap the value" pattern is the right fit for workflows — see [Start a workflow from elsewhere](#start-a-workflow-from-elsewhere) below, where `await handle.result()` resolves to the workflow's return value.
-
-## Run an agent
-
-Agents register workflow and activity functions, then poll the runtime service for tasks.
+The runtime process is launched by a host agent from the `workflow.runtime`
+task. Inside that process, an SDK `Agent` registers workflow and activity
+functions, then polls for workflow/activity tasks using delegated credentials.
 
 ```ts
 import {
@@ -86,10 +70,8 @@ export async function greetingWorkflow(name: string): Promise<string> {
   return greet(name);
 }
 
-const connection = await Connection.connect({
-  // Agent token from Settings > Organization > Agent tokens.
-  headers: { Authorization: `Bearer ${process.env.POSTGRIP_AGENT_TOKEN}` },
-});
+// The host agent injects delegated runtime credentials.
+const connection = await Connection.connect();
 
 const agent = await Agent.create({
   connection,
@@ -108,14 +90,14 @@ const resultPromise = client.workflow.execute(greetingWorkflow, {
   args: ['PostGrip'],
 });
 
-// runUntil starts the agent and resolves when the supplied promise does —
-// convenient for one-shot scripts. For long-lived workers, use agent.run()
-// and wire your own shutdown signaling.
+// runUntil starts the runtime worker and resolves when the supplied promise
+// does. For long-lived runtimes, use agent.run() and wire your own shutdown
+// signaling.
 await agent.runUntil(resultPromise);
 console.log(await resultPromise);
 ```
 
-The agent loops, leasing tasks from the configured queue, heartbeating each leased task, and dispatching to your registered functions. Concurrency is bounded by `maxConcurrentTaskExecutions` (default 4).
+The SDK `Agent` loops inside the managed runtime, leasing tasks from the configured queue, heartbeating each leased task, and dispatching to your registered functions. Concurrency is bounded by `maxConcurrentTaskExecutions` (default 4).
 
 ## Start a workflow from elsewhere
 

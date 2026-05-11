@@ -146,6 +146,6 @@ function readStringArrayJSON(name: string): string[] | undefined {
 }
 
 function agentTokenHeaders(): Record<string, string> {
-  const authToken = process.env.POSTGRIP_AGENT_TOKEN ?? process.env.POSTGRIP_AGENT_MANAGEMENT_TOKEN ?? '';
+  const authToken = process.env.POSTGRIP_AGENT_TOKEN ?? '';
   return authToken ? { Authorization: `Bearer ${authToken}` } : {};
 }

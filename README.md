@@ -6,7 +6,7 @@
 [![CI](https://github.com/postgrip-io/agent-sdk-typescript/actions/workflows/ci.yml/badge.svg)](https://github.com/postgrip-io/agent-sdk-typescript/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/postgrip-io/agent-sdk-typescript.svg)](LICENSE)
 
-This package provides a Temporal-style TypeScript API for defining, submitting, and executing PostGrip workflows. In production, SDK workflow runtimes are supervised by an existing PostGrip agent: the host agent launches the runtime, injects delegated credentials, and keeps generic operational tasks separate from workflow/activity task polling. Source for `agent-sdk-go` and `agent-sdk-python` lives in sibling repos under [`github.com/postgrip-io`](https://github.com/postgrip-io); the wire-format types are tracked in [`agent-sdk-protocol`](https://github.com/postgrip-io/agent-sdk-protocol).
+This package provides a Temporal-style TypeScript API for defining, submitting, and executing PostGrip workflows. In production, SDK workflow runtimes are supervised by an existing PostGrip agent: the host agent launches the runtime, injects delegated credentials, and keeps generic operational tasks separate from workflow/activity task polling. Client-side SDK code submits `workflow.runtime` tasks to an existing agent pool; it does not enroll or spawn standalone PostGrip agents. Source for `agent-sdk-go` and `agent-sdk-python` lives in sibling repos under [`github.com/postgrip-io`](https://github.com/postgrip-io); the wire-format types are tracked in [`agent-sdk-protocol`](https://github.com/postgrip-io/agent-sdk-protocol).
 
 **Docs:** [postgrip-io.github.io/agent-sdk-typescript](https://postgrip-io.github.io/agent-sdk-typescript/) — quick start, workflow runtime, API guide.
 
@@ -277,25 +277,6 @@ Workflow `retry` is durable on starts, child workflows, continue-as-new, and wor
 
 `WorkflowHandle.describe()` returns the workflow id, current task id, namespace, task queue, workflow type, status, attempt, run timeout, retry policy, memo, search attributes, timestamps, and terminal result/error when present.
 
-## Lower-level task API
-
-```ts
-const task = await client.task.shellExec({
-  queue: 'default',
-  command: 'echo',
-  args: ['hello from agent'],
-});
-```
-
-`containerExec` is the polyglot equivalent — the Go agent launches a per-task container via its docker CLI (proxied through the worker stack's docker socket proxy) so you can run Node/Bun/Python/Go without baking those runtimes into the agent image. Requires the agent process to have `DOCKER_HOST` set; the container runs with `--rm --network=none` and no host mounts, and the same env-key allowlist as `shellExec` rejects `DOCKER_*`, `POSTGRIP_*`, and host loader/interpreter prefixes.
-
-```ts
-const task = await client.task.containerExec({
-  queue: 'default',
-  image: 'node:22-alpine',
-  command: 'node',
-  args: ['-e', "console.log('hi from node')"],
-  pull_policy: 'missing',
-  timeout_seconds: 60,
-});
-```
+For SDK applications, the documented client-side submission path is
+`client.task.workflowRuntime(...)`; workflow and activity tasks are then
+coordinated by the managed runtime launched on the host agent.

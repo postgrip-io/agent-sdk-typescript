@@ -2,9 +2,9 @@
 
 Runnable examples that exercise the PostGrip Agent TypeScript SDK end-to-end
 against a live runtime service. Running an example locally submits a managed
-`workflow.runtime` task to an existing agent pool. The SDK Agent path runs only
-when a PostGrip host agent launches the example and injects delegated runtime
-credentials.
+`workflow.runtime` task to an existing agent pool. The SDK runtime worker path
+runs only when a PostGrip host agent launches the example and injects
+delegated runtime credentials.
 
 ## greeting
 
