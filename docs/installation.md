@@ -48,6 +48,8 @@ import {
   activityInfo,
   heartbeat,
   activityMilestone,
+  activityStdout,
+  activityStderr,
   // errors
   ApplicationFailure,
   CancelledFailure,

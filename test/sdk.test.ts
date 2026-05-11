@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { Client } from '../src/client';
 import { Connection } from '../src/connection';
 import { Agent } from '../src/agent';
-import { Worker as IndexWorker } from '../src/index';
+import { activityStderr, activityStdout, Worker as IndexWorker } from '../src/index';
 import { Worker as ModuleWorker } from '../src/worker';
 import { defineQuery } from '../src/workflow';
 import type { EnqueueTaskRequest, Task, WorkflowExecution, WorkflowRuntimePayload } from '../src/types';
@@ -26,6 +26,14 @@ function workflowTask(overrides: Partial<Task> = {}): Task {
     updated_at: '2026-04-22T00:00:00Z',
     ...overrides,
   } as Task;
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 describe('PostGrip Agent TypeScript Connection', () => {
@@ -431,6 +439,132 @@ describe('PostGrip Agent TypeScript Client', () => {
 });
 
 describe('PostGrip Agent TypeScript Agent', () => {
+  it('emits activity stdout and stderr events with task context', async () => {
+    const previousManagedRuntime = process.env.POSTGRIP_AGENT_MANAGED_RUNTIME;
+    process.env.POSTGRIP_AGENT_MANAGED_RUNTIME = 'true';
+    const connection = {
+      health: vi.fn(async () => ({ status: 'ok' })),
+      heartbeatTask: vi.fn(async () => workflowTask({ state: 'leased' })),
+      appendTaskEvent: vi.fn(async () => ({ id: 'event-1' })),
+      completeTask: vi.fn(async () => workflowTask({ state: 'succeeded' })),
+      failTask: vi.fn(async () => workflowTask({ state: 'failed' })),
+    };
+    let agent: Agent;
+    try {
+      agent = await Agent.create({
+        connection: connection as unknown as Connection,
+        taskQueue: 'default',
+        workflows: {},
+        activities: {
+          async processStep(name: string): Promise<string> {
+            await activityStdout(`processed ${name}\n`, { stage: 'processStep', details: { name } });
+            await activityStderr('diagnostic line\n');
+            return 'done';
+          },
+        },
+      });
+    } finally {
+      if (previousManagedRuntime == null) {
+        delete process.env.POSTGRIP_AGENT_MANAGED_RUNTIME;
+      } else {
+        process.env.POSTGRIP_AGENT_MANAGED_RUNTIME = previousManagedRuntime;
+      }
+    }
+
+    await (agent as unknown as { executeTask(task: Task): Promise<void> }).executeTask(workflowTask({
+      id: 'activity-task-1',
+      type: 'activity:processStep',
+      payload: { activityType: 'processStep', args: ['customers'] },
+    }));
+
+    expect(connection.appendTaskEvent).toHaveBeenCalledWith(
+      'activity-task-1',
+      expect.stringMatching(/^ts-agent-/),
+      expect.objectContaining({
+        kind: 'stdout',
+        stream: 'stdout',
+        data: 'processed customers\n',
+        stage: 'processStep',
+        details: { name: 'customers' },
+      }),
+    );
+    expect(connection.appendTaskEvent).toHaveBeenCalledWith(
+      'activity-task-1',
+      expect.stringMatching(/^ts-agent-/),
+      expect.objectContaining({
+        kind: 'stderr',
+        stream: 'stderr',
+        data: 'diagnostic line\n',
+        stage: 'activity',
+      }),
+    );
+  });
+
+  it('keeps activity output scoped across concurrent async activity tasks', async () => {
+    const previousManagedRuntime = process.env.POSTGRIP_AGENT_MANAGED_RUNTIME;
+    process.env.POSTGRIP_AGENT_MANAGED_RUNTIME = 'true';
+    const first = deferred();
+    const second = deferred();
+    const connection = {
+      health: vi.fn(async () => ({ status: 'ok' })),
+      heartbeatTask: vi.fn(async () => workflowTask({ state: 'leased' })),
+      appendTaskEvent: vi.fn(async (taskId: string, _agentId: string, event: Record<string, unknown>) => ({
+        id: 'event-1',
+        task_id: taskId,
+        ...event,
+      })),
+      completeTask: vi.fn(async () => workflowTask({ state: 'succeeded' })),
+      failTask: vi.fn(async () => workflowTask({ state: 'failed' })),
+    };
+    let agent: Agent;
+    try {
+      agent = await Agent.create({
+        connection: connection as unknown as Connection,
+        taskQueue: 'default',
+        workflows: {},
+        activities: {
+          async processStep(name: string): Promise<string> {
+            await (name === 'first' ? first.promise : second.promise);
+            await activityStdout(`${name}\n`);
+            return name;
+          },
+        },
+      });
+    } finally {
+      if (previousManagedRuntime == null) {
+        delete process.env.POSTGRIP_AGENT_MANAGED_RUNTIME;
+      } else {
+        process.env.POSTGRIP_AGENT_MANAGED_RUNTIME = previousManagedRuntime;
+      }
+    }
+
+    const execute = (agent as unknown as { executeTask(task: Task): Promise<void> }).executeTask.bind(agent);
+    const firstExecution = execute(workflowTask({
+      id: 'activity-task-1',
+      type: 'activity:processStep',
+      payload: { activityType: 'processStep', args: ['first'] },
+    }));
+    const secondExecution = execute(workflowTask({
+      id: 'activity-task-2',
+      type: 'activity:processStep',
+      payload: { activityType: 'processStep', args: ['second'] },
+    }));
+
+    await Promise.resolve();
+    await Promise.resolve();
+    first.resolve();
+    await Promise.resolve();
+    second.resolve();
+    await Promise.all([firstExecution, secondExecution]);
+
+    const stdoutCalls = connection.appendTaskEvent.mock.calls.filter((call) => call[2]?.kind === 'stdout');
+    expect(stdoutCalls).toHaveLength(2);
+    expect(stdoutCalls).toEqual(expect.arrayContaining([
+      ['activity-task-1', expect.stringMatching(/^ts-agent-/), expect.objectContaining({ data: 'first\n' })],
+      ['activity-task-2', expect.stringMatching(/^ts-agent-/), expect.objectContaining({ data: 'second\n' })],
+    ]));
+  });
+
   it('fails unsupported task types instead of completing them', async () => {
     const previousManagedRuntime = process.env.POSTGRIP_AGENT_MANAGED_RUNTIME;
     process.env.POSTGRIP_AGENT_MANAGED_RUNTIME = 'true';
