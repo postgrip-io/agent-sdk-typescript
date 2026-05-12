@@ -10,6 +10,8 @@ This package provides a Temporal-style TypeScript API for defining, submitting, 
 
 **Docs:** [postgrip-io.github.io/agent-sdk-typescript](https://postgrip-io.github.io/agent-sdk-typescript/) — quick start, workflow runtime, API guide.
 
+**Current release:** `0.11.0`
+
 ## Layout
 
 ```text

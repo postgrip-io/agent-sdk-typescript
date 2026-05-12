@@ -46,6 +46,7 @@ nav:
   - Quick start: quickstart.md
   - Workflow runtime: workflow-runtime.md
   - API: api.md
+  - Release notes: release-notes.md
 
 markdown_extensions:
   - admonition
